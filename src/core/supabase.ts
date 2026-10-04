@@ -40,8 +40,8 @@ export const supabase = initSupabase();
 /**
  * Fetch accounts from Supabase or fallback to initial clean seeds
  */
-export async function fetchLiveAccounts(): Promise<TreasuryAccount[]> {
-  if (!supabase) return INITIAL_ACCOUNTS;
+export async function fetchLiveAccounts(): Promise<TreasuryAccount[] | null> {
+  if (!supabase) return null;
   try {
     const { data, error } = await supabase
       .from("accounts")
@@ -49,7 +49,7 @@ export async function fetchLiveAccounts(): Promise<TreasuryAccount[]> {
       .order("code", { ascending: true });
 
     if (error || !data || data.length === 0) {
-      return INITIAL_ACCOUNTS;
+      return null;
     }
 
     return data.map((row: any) => ({
@@ -63,15 +63,15 @@ export async function fetchLiveAccounts(): Promise<TreasuryAccount[]> {
     }));
   } catch (err) {
     console.warn("[Supabase] Offline fallback for accounts:", err);
-    return INITIAL_ACCOUNTS;
+    return null;
   }
 }
 
 /**
  * Fetch customers from Supabase or fallback
  */
-export async function fetchLiveCustomers(): Promise<Customer[]> {
-  if (!supabase) return INITIAL_CUSTOMERS;
+export async function fetchLiveCustomers(): Promise<Customer[] | null> {
+  if (!supabase) return null;
   try {
     const { data, error } = await supabase
       .from("customers")
@@ -79,7 +79,7 @@ export async function fetchLiveCustomers(): Promise<Customer[]> {
       .order("name", { ascending: true });
 
     if (error || !data || data.length === 0) {
-      return INITIAL_CUSTOMERS;
+      return null;
     }
 
     return data.map((row: any) => ({
@@ -90,15 +90,15 @@ export async function fetchLiveCustomers(): Promise<Customer[]> {
       creditLimitPaisa: BigInt(row.credit_limit_paisa || 200000),
     }));
   } catch (err) {
-    return INITIAL_CUSTOMERS;
+    return null;
   }
 }
 
 /**
  * Fetch catalog items from Supabase or fallback
  */
-export async function fetchLiveCatalogItems(): Promise<CatalogItem[]> {
-  if (!supabase) return INITIAL_CATALOG_ITEMS;
+export async function fetchLiveCatalogItems(): Promise<CatalogItem[] | null> {
+  if (!supabase) return null;
   try {
     const { data, error } = await supabase
       .from("catalog_items")
@@ -106,7 +106,7 @@ export async function fetchLiveCatalogItems(): Promise<CatalogItem[]> {
       .order("name", { ascending: true });
 
     if (error || !data || data.length === 0) {
-      return INITIAL_CATALOG_ITEMS;
+      return null;
     }
 
     return data.map((row: any) => ({

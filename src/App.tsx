@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   INITIAL_ACCOUNTS,
   INITIAL_CUSTOMERS,
@@ -16,12 +16,13 @@ import { createContraTransferJournal, JournalEntry } from "./core/ledger";
 import {
   fetchLiveAccounts,
   fetchLiveCustomers,
-  fetchLiveCatalogItems,
   supabase,
 } from "./core/supabase";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardOverview } from "./components/DashboardOverview";
 import { PosTerminal } from "./components/PosTerminal";
+import { AccountManagerModal } from "./components/AccountManagerModal";
+import { ArrowLeftRight, Landmark } from "lucide-react";
 
 export type NavTab = "dashboard" | "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
 
@@ -63,9 +64,64 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Live Accounts & State (Zero Preloaded Data)
-  const [accounts, setAccounts] = useState<TreasuryAccount[]>(INITIAL_ACCOUNTS);
-  const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
+  // 1. Treasury Accounts (Zero Preloaded Fake Data — starts with Cash Drawer only)
+  const [accounts, setAccounts] = useState<TreasuryAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_user_accounts");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((acc: any) => ({
+            ...acc,
+            currentBalancePaisa: BigInt(acc.currentBalancePaisa || 0),
+          }));
+        }
+      }
+    } catch (e) {}
+    return INITIAL_ACCOUNTS;
+  });
+
+  // Save accounts to localStorage on change
+  useEffect(() => {
+    try {
+      const serializable = accounts.map((acc) => ({
+        ...acc,
+        currentBalancePaisa: acc.currentBalancePaisa.toString(),
+      }));
+      localStorage.setItem("dc_user_accounts", JSON.stringify(serializable));
+    } catch (e) {}
+  }, [accounts]);
+
+  // 2. Customers
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_user_customers");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((c: any) => ({
+            ...c,
+            currentDuePaisa: BigInt(c.currentDuePaisa || 0),
+            creditLimitPaisa: BigInt(c.creditLimitPaisa || 200000),
+          }));
+        }
+      }
+    } catch (e) {}
+    return INITIAL_CUSTOMERS;
+  });
+
+  useEffect(() => {
+    try {
+      const serializable = customers.map((c) => ({
+        ...c,
+        currentDuePaisa: c.currentDuePaisa.toString(),
+        creditLimitPaisa: c.creditLimitPaisa.toString(),
+      }));
+      localStorage.setItem("dc_user_customers", JSON.stringify(serializable));
+    } catch (e) {}
+  }, [customers]);
+
+  // 3. Catalog Items
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>(() => {
     try {
       const saved = localStorage.getItem("dc_user_catalog");
@@ -82,13 +138,89 @@ export function App() {
     } catch (e) {}
     return [];
   });
-  const [creditCards, setCreditCards] = useState<CreditCardItem[]>(INITIAL_CREDIT_CARDS);
-  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
-  const [digitalTransactions, setDigitalTransactions] = useState<DigitalTransaction[]>([]);
-  const [cashBookEntries, setCashBookEntries] = useState<CashBookEntry[]>([]);
+
+  // 4. Invoices
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_user_invoices");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((inv: any) => ({
+            ...inv,
+            subtotalPaisa: BigInt(inv.subtotalPaisa || 0),
+            discountPaisa: BigInt(inv.discountPaisa || 0),
+            totalPaisa: BigInt(inv.totalPaisa || 0),
+            items: (inv.items || []).map((it: any) => ({
+              ...it,
+              unitPricePaisa: BigInt(it.unitPricePaisa || 0),
+              totalPaisa: BigInt(it.totalPaisa || 0),
+            })),
+            allocations: (inv.allocations || []).map((al: any) => ({
+              ...al,
+              amountPaisa: BigInt(al.amountPaisa || 0),
+            })),
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      const serializable = invoices.map((inv) => ({
+        ...inv,
+        subtotalPaisa: inv.subtotalPaisa.toString(),
+        discountPaisa: inv.discountPaisa.toString(),
+        totalPaisa: inv.totalPaisa.toString(),
+        items: inv.items.map((it) => ({
+          ...it,
+          unitPricePaisa: it.unitPricePaisa.toString(),
+          totalPaisa: it.totalPaisa.toString(),
+        })),
+        allocations: (inv.allocations || []).map((al) => ({
+          ...al,
+          amountPaisa: al.amountPaisa.toString(),
+        })),
+      }));
+      localStorage.setItem("dc_user_invoices", JSON.stringify(serializable));
+    } catch (e) {}
+  }, [invoices]);
+
+  // 5. Cash Book Entries
+  const [cashBookEntries, setCashBookEntries] = useState<CashBookEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_user_cashbook");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((cb: any) => ({
+            ...cb,
+            amountPaisa: BigInt(cb.amountPaisa || 0),
+            runningBalancePaisa: BigInt(cb.runningBalancePaisa || 0),
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      const serializable = cashBookEntries.map((cb) => ({
+        ...cb,
+        amountPaisa: cb.amountPaisa.toString(),
+        runningBalancePaisa: cb.runningBalancePaisa.toString(),
+      }));
+      localStorage.setItem("dc_user_cashbook", JSON.stringify(serializable));
+    } catch (e) {}
+  }, [cashBookEntries]);
+
+  const [creditCards] = useState<CreditCardItem[]>(INITIAL_CREDIT_CARDS);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
 
-  // Cloud Sync on Mount
+  // Cloud Sync on Mount (only if Supabase has real live data)
   useEffect(() => {
     fetchLiveAccounts().then((accs) => {
       if (accs && accs.length > 0) setAccounts(accs);
@@ -98,13 +230,33 @@ export function App() {
     });
   }, []);
 
-  // 1-Click Move Money (Contra Modal)
+  // Filter liquid accounts (CASH, BANK, WALLET, UPI_HOLDING)
+  const liquidAccounts = useMemo(() => {
+    return accounts.filter((a) => a.type !== "INCOME" && a.type !== "EXPENSE");
+  }, [accounts]);
+
+  // Move Money State
   const [isMoveOpen, setIsMoveOpen] = useState(false);
-  const [moveFromId, setMoveFromId] = useState("acc-bank-sbi");
-  const [moveToId, setMoveToId] = useState("acc-cash");
+  const [moveFromId, setMoveFromId] = useState<string>("acc-cash");
+  const [moveToId, setMoveToId] = useState<string>("");
   const [moveAmount, setMoveAmount] = useState("");
   const [moveNote, setMoveNote] = useState("");
   const [toastNotice, setToastNotice] = useState<string | null>(null);
+
+  // Sync Move Money default selections to available accounts
+  useEffect(() => {
+    if (liquidAccounts.length > 0) {
+      if (!liquidAccounts.some((a) => a.id === moveFromId)) {
+        setMoveFromId(liquidAccounts[0].id);
+      }
+      if (!liquidAccounts.some((a) => a.id === moveToId)) {
+        setMoveToId(liquidAccounts.length > 1 ? liquidAccounts[1].id : liquidAccounts[0].id);
+      }
+    }
+  }, [liquidAccounts]);
+
+  // Account Manager Modal State
+  const [isAccountManagerOpen, setIsAccountManagerOpen] = useState(false);
 
   const showToast = (msg: string) => {
     setToastNotice(msg);
@@ -128,6 +280,30 @@ export function App() {
     const rupees = abs / 100n;
     const cents = (abs % 100n).toString().padStart(2, "0");
     return `${isNeg ? "-" : ""}₹${rupees.toLocaleString("en-IN")}.${cents}`;
+  };
+
+  // Account Management Handlers
+  const handleAddAccount = (newAcc: TreasuryAccount) => {
+    setAccounts((prev) => {
+      const exists = prev.some((a) => a.id === newAcc.id);
+      if (exists) return prev;
+      return [...prev, newAcc];
+    });
+    showToast(`✓ Created account: ${newAcc.name}`);
+  };
+
+  const handleEditAccount = (updatedAcc: TreasuryAccount) => {
+    setAccounts((prev) => prev.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
+    showToast(`✓ Updated account: ${updatedAcc.name}`);
+  };
+
+  const handleDeleteAccount = (id: string) => {
+    if (id === "acc-cash") {
+      alert("Shop Cash Drawer cannot be deleted as it is the primary cash desk.");
+      return;
+    }
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    showToast("✓ Account removed from treasury");
   };
 
   // Keyboard Hotkeys
@@ -177,8 +353,13 @@ export function App() {
       return;
     }
 
-    const fromAcc = accounts.find((a) => a.id === moveFromId)!;
-    const toAcc = accounts.find((a) => a.id === moveToId)!;
+    const fromAcc = accounts.find((a) => a.id === moveFromId);
+    const toAcc = accounts.find((a) => a.id === moveToId);
+
+    if (!fromAcc || !toAcc) {
+      alert("Please select both source and destination accounts.");
+      return;
+    }
 
     const contraJournal = createContraTransferJournal({
       transferId: `MOV-${Date.now().toString().slice(-4)}`,
@@ -263,18 +444,34 @@ export function App() {
     // 2. Journal Entries
     setJournalEntries((prev) => [journal, ...prev]);
 
-    // 3. Update accounts
-    setAccounts((prev) =>
-      prev.map((acc) => {
+    // 3. Update accounts (with auto-instantiation of QR account if none exists yet)
+    setAccounts((prev) => {
+      let qrAccountFound = false;
+      const updated = prev.map((acc) => {
         if (acc.type === "CASH" && cashDeltaPaisa > 0n) {
           return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + cashDeltaPaisa };
         }
-        if (acc.type === "UPI_HOLDING" && qrDeltaPaisa > 0n) {
+        if (acc.type === "UPI_HOLDING" && qrDeltaPaisa > 0n && !qrAccountFound) {
+          qrAccountFound = true;
           return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + qrDeltaPaisa };
         }
         return acc;
-      })
-    );
+      });
+
+      if (qrDeltaPaisa > 0n && !qrAccountFound) {
+        const newQrAccount: TreasuryAccount = {
+          id: `acc-upi-qr-${Date.now()}`,
+          code: "1040",
+          name: "Counter UPI QR Collections",
+          type: "UPI_HOLDING",
+          currentBalancePaisa: qrDeltaPaisa,
+          isActive: true,
+          metadata: { qrIdentifier: "Merchant Soundbox" },
+        };
+        return [...updated, newQrAccount];
+      }
+      return updated;
+    });
 
     // 4. If Cash Tendered, write to Cash Book
     if (cashDeltaPaisa > 0n) {
@@ -298,7 +495,9 @@ export function App() {
     if (khataDeltaPaisa > 0n) {
       setCustomers((prev) => {
         const existing = prev.find(
-          (c) => (customerPhone && c.phone === customerPhone) || c.name === invoice.customerName
+          (c) =>
+            (customerPhone && c.phone === customerPhone) ||
+            c.name.toLowerCase() === invoice.customerName.toLowerCase()
         );
         if (existing) {
           return prev.map((c) =>
@@ -324,6 +523,80 @@ export function App() {
     showToast(`✓ Sale #${invoice.invoiceNumber} Completed (${formatPaisa(invoice.totalPaisa)})`);
   };
 
+  // Handle Void / Cancel Sale Reversal
+  const handleVoidInvoice = (invoiceId: string) => {
+    const inv = invoices.find((i) => i.id === invoiceId);
+    if (!inv || inv.status === "VOID") return;
+
+    let cashReversal = 0n;
+    let qrReversal = 0n;
+    let khataReversal = 0n;
+
+    if (inv.paymentMethod === "CASH") cashReversal = inv.totalPaisa;
+    else if (inv.paymentMethod === "UPI") qrReversal = inv.totalPaisa;
+    else if (inv.paymentMethod === "KHATA") khataReversal = inv.totalPaisa;
+    else if (inv.paymentMethod === "SPLIT" && inv.allocations) {
+      inv.allocations.forEach((al) => {
+        if (al.method === "CASH") cashReversal += al.amountPaisa;
+        else if (al.method === "UPI") qrReversal += al.amountPaisa;
+        else if (al.method === "KHATA") khataReversal += al.amountPaisa;
+      });
+    }
+
+    setInvoices((prev) =>
+      prev.map((i) => (i.id === invoiceId ? { ...i, status: "VOID" } : i))
+    );
+
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.type === "CASH" && cashReversal > 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa - cashReversal };
+        }
+        if (acc.type === "UPI_HOLDING" && qrReversal > 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa - qrReversal };
+        }
+        return acc;
+      })
+    );
+
+    if (khataReversal > 0n) {
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.name.toLowerCase() === inv.customerName.toLowerCase() ||
+          (inv.customerPhone && c.phone === inv.customerPhone)
+            ? {
+                ...c,
+                currentDuePaisa:
+                  c.currentDuePaisa >= khataReversal
+                    ? c.currentDuePaisa - khataReversal
+                    : 0n,
+              }
+            : c
+        )
+      );
+    }
+
+    if (cashReversal > 0n) {
+      setCashBookEntries((prev) => [
+        {
+          id: `cb-${Date.now()}`,
+          date: new Date().toISOString().split("T")[0],
+          time: timeStr,
+          description: `VOID POS Sale #${inv.invoiceNumber} (Reversal)`,
+          type: "OUT",
+          amountPaisa: cashReversal,
+          runningBalancePaisa: cashAccount.currentBalancePaisa - cashReversal,
+          category: "POS_SALE",
+          referenceId: inv.invoiceNumber,
+        },
+        ...prev,
+      ]);
+    }
+
+    showToast(`✓ Voided invoice #${inv.invoiceNumber} and reversed all balances.`);
+  };
+
+  // Catalog Item Handlers
   const handleAddCatalogItem = (item: CatalogItem) => {
     setCatalogItems((prev) => {
       const updated = [item, ...prev];
@@ -383,9 +656,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-100/70 dark:bg-slate-900 text-slate-900 dark:text-slate-100 flex font-sans transition-colors duration-200">
-      {/* ==================================================================== */}
-      {/* 1. CLEAN SIDEBAR (With Dashboard tab, NO top Move Money button)       */}
-      {/* ==================================================================== */}
+      {/* 1. SIDEBAR */}
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
@@ -394,9 +665,7 @@ export function App() {
         isCloudSynced={!!supabase}
       />
 
-      {/* ==================================================================== */}
-      {/* 2. MAIN APPLICATION WORKSPACE AREA (NO TOPBAR, PURE CONTENT)         */}
-      {/* ==================================================================== */}
+      {/* 2. MAIN WORKSPACE */}
       <main
         className={`flex-1 min-w-0 transition-colors ${
           activeTab === "pos" ? "h-screen overflow-hidden p-4 flex flex-col" : "h-screen overflow-y-auto p-6"
@@ -427,10 +696,11 @@ export function App() {
             timeStr={timeStr}
             onSelectTab={setActiveTab}
             onOpenMoveMoney={() => setIsMoveOpen(true)}
+            onOpenAccountManager={() => setIsAccountManagerOpen(true)}
           />
         )}
 
-        {/* WORKSPACE VIEW: MODULE 1 POS (ZERO PRELOADED DATA BY DEFAULT) */}
+        {/* WORKSPACE VIEW: MODULE 1 POS */}
         {activeTab === "pos" && (
           <PosTerminal
             catalogItems={catalogItems}
@@ -442,6 +712,7 @@ export function App() {
             accounts={accounts}
             invoices={invoices}
             onRecordSale={handleRecordPosSale}
+            onVoidInvoice={handleVoidInvoice}
             timeStr={timeStr}
           />
         )}
@@ -487,6 +758,15 @@ export function App() {
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               Daily Cash Book, physical note denomination counter, Section 194N tracker, and P&L.
             </p>
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => setIsAccountManagerOpen(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
+              >
+                ⚙️ Open Treasury & Accounts Manager
+              </button>
+            </div>
           </div>
         )}
 
@@ -506,107 +786,152 @@ export function App() {
       {/* UNIVERSAL CONTRA MOVE MONEY MODAL                                    */}
       {/* ==================================================================== */}
       {isMoveOpen && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
-              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>🔄</span> Universal Move Money (Contra)
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsMoveOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleConfirmMoveMoney} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Source Account (FROM)
-                </label>
-                <select
-                  value={moveFromId}
-                  onChange={(e) => setMoveFromId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <ArrowLeftRight className="w-4 h-4" />
+                </span>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                  Universal Move Money (Contra)
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAccountManagerOpen(true)}
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-1 rounded-lg cursor-pointer"
                 >
-                  {accounts
-                    .filter((a) => a.type !== "INCOME" && a.type !== "EXPENSE")
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} ({formatPaisa(a.currentBalancePaisa)})
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Destination Account (TO)
-                </label>
-                <select
-                  value={moveToId}
-                  onChange={(e) => setMoveToId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                >
-                  {accounts
-                    .filter((a) => a.type !== "INCOME" && a.type !== "EXPENSE")
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} ({formatPaisa(a.currentBalancePaisa)})
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Transfer Amount (₹)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="e.g. 5000"
-                  value={moveAmount}
-                  onChange={(e) => setMoveAmount(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Remarks / Note (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. ATM cash withdrawal for drawer"
-                  value={moveNote}
-                  onChange={(e) => setMoveNote(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
+                  ⚙️ Manage Accounts
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsMoveOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold cursor-pointer"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 cursor-pointer"
-                >
-                  Confirm Transfer
+                  ✕
                 </button>
               </div>
-            </form>
+            </div>
+
+            {liquidAccounts.length < 2 ? (
+              <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-center space-y-3">
+                <span className="text-3xl block">🏦</span>
+                <div>
+                  <h4 className="text-xs font-black text-amber-900 dark:text-amber-200">
+                    Add Another Account to Move Money
+                  </h4>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+                    You currently have only 1 account (<strong>{cashAccount.name}</strong>). To move money (e.g. Bank ATM cash withdrawal or Portal wallet transfer), please add your Bank account or Wallet.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAccountManagerOpen(true)}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 cursor-pointer"
+                >
+                  + Add Bank / Wallet Account
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleConfirmMoveMoney} className="space-y-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Source Account (FROM)
+                  </label>
+                  <select
+                    value={moveFromId}
+                    onChange={(e) => setMoveFromId(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {liquidAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({formatPaisa(a.currentBalancePaisa)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Destination Account (TO)
+                  </label>
+                  <select
+                    value={moveToId}
+                    onChange={(e) => setMoveToId(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {liquidAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({formatPaisa(a.currentBalancePaisa)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Transfer Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    required
+                    placeholder="e.g. 5000"
+                    value={moveAmount}
+                    onChange={(e) => setMoveAmount(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Remarks / Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. ATM cash withdrawal for drawer"
+                    value={moveNote}
+                    onChange={(e) => setMoveNote(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsMoveOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 cursor-pointer"
+                  >
+                    Confirm Transfer
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
+
+      {/* ==================================================================== */}
+      {/* TREASURY & ACCOUNTS MANAGER MODAL                                     */}
+      {/* ==================================================================== */}
+      <AccountManagerModal
+        isOpen={isAccountManagerOpen}
+        onClose={() => setIsAccountManagerOpen(false)}
+        accounts={accounts}
+        onAddAccount={handleAddAccount}
+        onEditAccount={handleEditAccount}
+        onDeleteAccount={handleDeleteAccount}
+        formatPaisa={formatPaisa}
+      />
     </div>
   );
 }

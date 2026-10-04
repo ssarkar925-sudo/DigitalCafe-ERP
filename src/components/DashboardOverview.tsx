@@ -21,6 +21,7 @@ interface DashboardProps {
   timeStr: string;
   onSelectTab: (tab: NavTab) => void;
   onOpenMoveMoney: () => void;
+  onOpenAccountManager?: () => void;
 }
 
 export const DashboardOverview: React.FC<DashboardProps> = ({
@@ -32,6 +33,7 @@ export const DashboardOverview: React.FC<DashboardProps> = ({
   timeStr,
   onSelectTab,
   onOpenMoveMoney,
+  onOpenAccountManager,
 }) => {
   const formatPaisa = (paisa: bigint) => {
     const isNeg = paisa < 0n;
@@ -72,6 +74,17 @@ export const DashboardOverview: React.FC<DashboardProps> = ({
               Live Sync Active
             </span>
           </div>
+
+          {onOpenAccountManager && (
+            <button
+              type="button"
+              onClick={onOpenAccountManager}
+              className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Landmark className="w-4 h-4 text-indigo-500" />
+              <span>Accounts</span>
+            </button>
+          )}
 
           <button
             type="button"

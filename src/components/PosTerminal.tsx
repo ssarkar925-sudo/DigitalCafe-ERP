@@ -38,6 +38,7 @@ import {
   Clock,
   ChevronRight,
 } from "lucide-react";
+import { SalesHistoryModal } from "./SalesHistoryModal";
 
 export interface HeldOrder {
   id: string;
@@ -69,6 +70,7 @@ interface PosTerminalProps {
     khataDeltaPaisa: bigint;
     customerPhone?: string;
   }) => void;
+  onVoidInvoice?: (invoiceId: string) => void;
   timeStr: string;
 }
 
@@ -102,12 +104,15 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   accounts,
   invoices = [],
   onRecordSale,
+  onVoidInvoice,
   timeStr,
 }) => {
   // --- View Mode: Grid vs List ---
   const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
     return (localStorage.getItem("dc_pos_view_mode") as "grid" | "list") || "grid";
   });
+
+  const [isSalesHistoryOpen, setIsSalesHistoryOpen] = useState(false);
 
   const toggleViewMode = (mode: "grid" | "list") => {
     setViewMode(mode);
@@ -1153,6 +1158,18 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               <span>Held ({heldOrders.length})</span>
             </button>
           )}
+
+          {/* Sales History Register Button */}
+          <button
+            type="button"
+            onClick={() => setIsSalesHistoryOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+            title="View today's sales, reprint slips, or void transactions"
+          >
+            <Receipt className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden sm:inline">Bills ({invoices.length})</span>
+            <span className="sm:hidden">Bills</span>
+          </button>
 
           {/* Manage Catalog Button */}
           <button
@@ -2510,6 +2527,20 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           </div>
         </div>
       )}
+
+      {/* ===================================================================== */}
+      {/* 4.5 MODAL: SALES & INVOICES REGISTER                                  */}
+      {/* ===================================================================== */}
+      <SalesHistoryModal
+        isOpen={isSalesHistoryOpen}
+        onClose={() => setIsSalesHistoryOpen(false)}
+        invoices={invoices}
+        onVoidInvoice={onVoidInvoice}
+        onPrintThermal={handleThermalPrint}
+        onDownloadPdf={handleDownloadPdf}
+        onWhatsApp={handleWhatsAppDispatch}
+        formatPaisa={formatPaisa}
+      />
 
       {/* ===================================================================== */}
       {/* 5. MODAL: COMPREHENSIVE CATALOG MANAGER TABLE                         */}
