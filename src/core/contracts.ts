@@ -121,6 +121,7 @@ export interface DigitalTransaction {
   date: string;
   time: string;
   serviceType: DigitalServiceType;
+  customerName?: string;
   customerMobile?: string;
   beneficiaryDetails?: string;
   amountPaisa: bigint;
@@ -135,7 +136,7 @@ export interface DigitalTransaction {
   inwardAccountName?: string;
   rrnOrUtr?: string;
   voucherCode?: string;
-  status: "SUCCESS" | "FAILED" | "PENDING";
+  status: "SUCCESS" | "FAILED" | "PENDING" | "VOID";
 }
 
 export interface CashBookEntry {
@@ -146,7 +147,7 @@ export interface CashBookEntry {
   type: "IN" | "OUT";
   amountPaisa: bigint;
   runningBalancePaisa: bigint;
-  category: "POS_SALE" | "AEPS_PAYOUT" | "AEPS_FEE" | "DMT_CASH_IN" | "UPI_CASHOUT_PAYOUT" | "EXPENSE" | "CONTRA_TRANSFER" | "KHATA_PAYMENT";
+  category: "POS_SALE" | "AEPS_PAYOUT" | "AEPS_FEE" | "DMT_CASH_IN" | "UPI_CASHOUT_PAYOUT" | "EXPENSE" | "CONTRA_TRANSFER" | "KHATA_PAYMENT" | "VOID_REVERSAL";
   referenceId?: string;
 }
 

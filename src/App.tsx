@@ -638,14 +638,20 @@ export function App() {
     journal,
     cashDeltaPaisa,
     sourceDeltaPaisa,
+    qrDeltaPaisa,
+    khataDeltaPaisa,
     customerPhone,
+    customerName,
   }: {
     transaction: DigitalTransaction;
     journal: JournalEntry;
     cashDeltaPaisa: bigint;
     sourceDeltaPaisa: bigint;
     portalDeltaPaisa: bigint;
+    qrDeltaPaisa?: bigint;
+    khataDeltaPaisa?: bigint;
     customerPhone?: string;
+    customerName?: string;
   }) => {
     // 1. Digital transactions
     setDigitalTransactions((prev) => [transaction, ...prev]);
@@ -653,18 +659,38 @@ export function App() {
     // 2. Journal Entries
     setJournalEntries((prev) => [journal, ...prev]);
 
-    // 3. Update accounts
-    setAccounts((prev) =>
-      prev.map((acc) => {
+    // 3. Update accounts (Cash Drawer, Source Portal/Bank, and Counter UPI QR)
+    setAccounts((prev) => {
+      let qrCredited = false;
+      const updated = prev.map((acc) => {
         if (acc.id === cashAccount.id && cashDeltaPaisa !== 0n) {
           return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + cashDeltaPaisa };
         }
         if (acc.id === transaction.sourceAccountId && sourceDeltaPaisa !== 0n) {
           return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + sourceDeltaPaisa };
         }
+        if (qrDeltaPaisa && qrDeltaPaisa > 0n && acc.type === "UPI_HOLDING" && !qrCredited) {
+          qrCredited = true;
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + qrDeltaPaisa };
+        }
         return acc;
-      })
-    );
+      });
+
+      // Auto-instantiate UPI_HOLDING account if fee collected via QR but none exists yet
+      if (qrDeltaPaisa && qrDeltaPaisa > 0n && !qrCredited) {
+        const newQr: TreasuryAccount = {
+          id: `acc-upi-qr-${Date.now()}`,
+          code: "1040",
+          name: "Counter UPI QR Collections",
+          type: "UPI_HOLDING",
+          currentBalancePaisa: qrDeltaPaisa,
+          isActive: true,
+          metadata: { qrIdentifier: "Merchant Soundbox" },
+        };
+        return [...updated, newQr];
+      }
+      return updated;
+    });
 
     // 4. Update Cash Book if physical cash moved
     if (cashDeltaPaisa !== 0n) {
@@ -675,7 +701,7 @@ export function App() {
           id: `cb-${Date.now()}`,
           date: transaction.date,
           time: transaction.time,
-          description: `${transaction.serviceType} Banking #${transaction.id} (${transaction.beneficiaryDetails || ""})`,
+          description: `${transaction.serviceType} Banking #${transaction.id} (${customerName ? `${customerName} • ` : ""}${transaction.beneficiaryDetails || ""})`,
           type: isCashIn ? "IN" : "OUT",
           amountPaisa: absAmount,
           runningBalancePaisa: cashAccount.currentBalancePaisa + cashDeltaPaisa,
@@ -692,15 +718,26 @@ export function App() {
     }
 
     // 5. Update Khata if fee added to khata
-    if (transaction.feeCollectionMode === "KHATA" && transaction.customerFeePaisa > 0n) {
+    const feeOnKhata =
+      khataDeltaPaisa && khataDeltaPaisa > 0n
+        ? khataDeltaPaisa
+        : transaction.feeCollectionMode === "KHATA"
+        ? transaction.customerFeePaisa
+        : 0n;
+
+    if (feeOnKhata > 0n) {
       setCustomers((prev) => {
+        const nameToUse =
+          customerName || transaction.customerName || `CSP Customer (${customerPhone || "Mobile"})`;
         const existing = prev.find(
-          (c) => (customerPhone && c.phone === customerPhone)
+          (c) =>
+            (customerPhone && c.phone === customerPhone) ||
+            (customerName && c.name.toLowerCase() === customerName.toLowerCase())
         );
         if (existing) {
           return prev.map((c) =>
             c.id === existing.id
-              ? { ...c, currentDuePaisa: c.currentDuePaisa + transaction.customerFeePaisa }
+              ? { ...c, currentDuePaisa: c.currentDuePaisa + feeOnKhata }
               : c
           );
         } else {
@@ -708,9 +745,9 @@ export function App() {
             ...prev,
             {
               id: `cust-${Date.now()}`,
-              name: `CSP Customer (${customerPhone || "Mobile"})`,
+              name: nameToUse,
               phone: customerPhone || "",
-              currentDuePaisa: transaction.customerFeePaisa,
+              currentDuePaisa: feeOnKhata,
               creditLimitPaisa: 200000n,
             },
           ];
@@ -722,8 +759,132 @@ export function App() {
   };
 
   const handleVoidDigitalTransaction = (txnId: string) => {
-    setDigitalTransactions((prev) => prev.filter((t) => t.id !== txnId));
-    showToast(`✓ Voided banking transaction #${txnId}`);
+    const txn = digitalTransactions.find((t) => t.id === txnId);
+    if (!txn || txn.status === "VOID") return;
+
+    // Calculate exact reversal deltas based on serviceType and feeCollectionMode
+    let cashReversalPaisa = 0n;
+    let sourceReversalPaisa = 0n;
+    let qrReversalPaisa = 0n;
+    let khataReversalPaisa = 0n;
+
+    if (txn.serviceType === "AEPS") {
+      sourceReversalPaisa = -(txn.amountPaisa + txn.portalCommissionPaisa);
+      if (txn.feeCollectionMode === "CUT_FROM_CASH" || txn.feeCollectionMode === "SEPARATE_CASH") {
+        const cashHanded =
+          txn.amountPaisa >= txn.customerFeePaisa
+            ? txn.amountPaisa - txn.customerFeePaisa
+            : txn.amountPaisa;
+        cashReversalPaisa = cashHanded;
+      } else if (txn.feeCollectionMode === "UPI_QR") {
+        cashReversalPaisa = txn.amountPaisa;
+        qrReversalPaisa = -txn.customerFeePaisa;
+      } else if (txn.feeCollectionMode === "KHATA") {
+        cashReversalPaisa = txn.amountPaisa;
+        khataReversalPaisa = -txn.customerFeePaisa;
+      }
+    } else if (txn.serviceType === "DMT") {
+      if (txn.feeCollectionMode === "SEPARATE_CASH") {
+        cashReversalPaisa = -(txn.amountPaisa + txn.customerFeePaisa);
+        sourceReversalPaisa = txn.amountPaisa + txn.portalSurchargePaisa;
+      } else if (txn.feeCollectionMode === "CUT_FROM_CASH") {
+        cashReversalPaisa = -txn.amountPaisa;
+        const transferSent =
+          txn.amountPaisa >= txn.customerFeePaisa
+            ? txn.amountPaisa - txn.customerFeePaisa
+            : txn.amountPaisa;
+        sourceReversalPaisa = transferSent + txn.portalSurchargePaisa;
+      } else if (txn.feeCollectionMode === "UPI_QR") {
+        cashReversalPaisa = -txn.amountPaisa;
+        qrReversalPaisa = -txn.customerFeePaisa;
+        sourceReversalPaisa = txn.amountPaisa + txn.portalSurchargePaisa;
+      } else if (txn.feeCollectionMode === "KHATA") {
+        cashReversalPaisa = -txn.amountPaisa;
+        khataReversalPaisa = -txn.customerFeePaisa;
+        sourceReversalPaisa = txn.amountPaisa + txn.portalSurchargePaisa;
+      }
+    } else if (txn.serviceType === "UPI_CASHOUT") {
+      if (txn.feeCollectionMode === "INCLUDED_IN_QR") {
+        cashReversalPaisa = txn.amountPaisa;
+        sourceReversalPaisa = -(txn.amountPaisa + txn.customerFeePaisa);
+      } else {
+        const cashHanded =
+          txn.amountPaisa >= txn.customerFeePaisa
+            ? txn.amountPaisa - txn.customerFeePaisa
+            : txn.amountPaisa;
+        cashReversalPaisa = cashHanded;
+        sourceReversalPaisa = -txn.amountPaisa;
+      }
+    }
+
+    // 1. Mark status as VOID
+    setDigitalTransactions((prev) =>
+      prev.map((t) => (t.id === txnId ? { ...t, status: "VOID" } : t))
+    );
+
+    // 2. Reverse Treasury Accounts
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === cashAccount.id && cashReversalPaisa !== 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + cashReversalPaisa };
+        }
+        if (acc.id === txn.sourceAccountId && sourceReversalPaisa !== 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + sourceReversalPaisa };
+        }
+        if (acc.type === "UPI_HOLDING" && qrReversalPaisa !== 0n) {
+          return {
+            ...acc,
+            currentBalancePaisa:
+              acc.currentBalancePaisa >= -qrReversalPaisa
+                ? acc.currentBalancePaisa + qrReversalPaisa
+                : 0n,
+          };
+        }
+        return acc;
+      })
+    );
+
+    // 3. Reverse Customer Khata Due if applicable
+    if (khataReversalPaisa !== 0n) {
+      setCustomers((prev) =>
+        prev.map((c) => {
+          const match =
+            (txn.customerMobile && c.phone === txn.customerMobile) ||
+            (txn.customerName && c.name.toLowerCase() === txn.customerName.toLowerCase());
+          if (match) {
+            const dueReduction = -khataReversalPaisa;
+            return {
+              ...c,
+              currentDuePaisa:
+                c.currentDuePaisa >= dueReduction ? c.currentDuePaisa - dueReduction : 0n,
+            };
+          }
+          return c;
+        })
+      );
+    }
+
+    // 4. Log VOID entry in Cash Book if physical cash was reversed
+    if (cashReversalPaisa !== 0n) {
+      const isCashIn = cashReversalPaisa > 0n;
+      const absAmount = isCashIn ? cashReversalPaisa : -cashReversalPaisa;
+      setCashBookEntries((prev) => [
+        {
+          id: `cb-${Date.now()}`,
+          date: new Date().toISOString().split("T")[0],
+          time: timeStr,
+          description: `VOID Banking #${txn.id} (${txn.serviceType} Reversal)`,
+          type: isCashIn ? "IN" : "OUT",
+          amountPaisa: absAmount,
+          runningBalancePaisa: cashAccount.currentBalancePaisa + cashReversalPaisa,
+          category: "VOID_REVERSAL",
+          referenceId: txn.id,
+        },
+        ...prev,
+      ]);
+    }
+
+    showToast(`✓ Voided ${txn.serviceType} #${txn.id} and reversed all account balances.`);
   };
 
   // Catalog Item Handlers
@@ -855,6 +1016,8 @@ export function App() {
             timeStr={timeStr}
             onRecordDigitalTransaction={handleRecordDigitalTransaction}
             onVoidDigitalTransaction={handleVoidDigitalTransaction}
+            onAddAccount={handleAddAccount}
+            onOpenAccountManager={() => setIsAccountManagerOpen(true)}
           />
         )}
 

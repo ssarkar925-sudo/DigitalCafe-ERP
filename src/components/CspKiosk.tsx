@@ -36,6 +36,15 @@ import {
   Layers,
 } from "lucide-react";
 
+const COMMON_CSP_PORTALS = [
+  { name: "CSC DigiPay", type: "WALLET" as const, code: "1021", desc: "CSC e-Gov AePS" },
+  { name: "Spice Money", type: "WALLET" as const, code: "1022", desc: "Spicemoney AePS / DMT" },
+  { name: "Fino Mitra", type: "WALLET" as const, code: "1023", desc: "Fino Payment Bank BC" },
+  { name: "PayNearby", type: "WALLET" as const, code: "1024", desc: "PayNearby Retailer" },
+  { name: "SBI Current A/C", type: "BANK" as const, code: "1031", desc: "SBI Commercial Banking" },
+  { name: "Counter UPI QR", type: "UPI_HOLDING" as const, code: "1041", desc: "Merchant Soundbox QR" },
+];
+
 interface CspKioskProps {
   accounts: TreasuryAccount[];
   customers: Customer[];
@@ -46,9 +55,14 @@ interface CspKioskProps {
     cashDeltaPaisa: bigint;
     sourceDeltaPaisa: bigint;
     portalDeltaPaisa: bigint;
+    qrDeltaPaisa?: bigint;
+    khataDeltaPaisa?: bigint;
     customerPhone?: string;
+    customerName?: string;
   }) => void;
   onVoidDigitalTransaction?: (txnId: string) => void;
+  onAddAccount?: (account: TreasuryAccount) => void;
+  onOpenAccountManager?: () => void;
 }
 
 export const CspKiosk: React.FC<CspKioskProps> = ({
@@ -57,6 +71,8 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
   timeStr,
   onRecordDigitalTransaction,
   onVoidDigitalTransaction,
+  onAddAccount,
+  onOpenAccountManager,
 }) => {
   // Navigation sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<"aeps" | "dmt" | "cashout" | "register">("aeps");
@@ -108,25 +124,64 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
     return `${isNeg ? "-" : ""}₹${rupees.toLocaleString("en-IN")}.${cents}`;
   };
 
-  // Find relevant accounts
+  // Strictly isolate Treasury accounts - Shop Cash Drawer is NEVER a portal or bank account
   const cashAccount = accounts.find((a) => a.type === "CASH") || accounts[0];
-  const walletAccounts = accounts.filter((a) => a.type === "WALLET");
-  const bankAccounts = accounts.filter((a) => a.type === "BANK");
-  const qrAccounts = accounts.filter((a) => a.type === "UPI_HOLDING");
+  const portalAccounts = useMemo(() => {
+    return accounts.filter((a) => (a.type === "WALLET" || a.type === "BANK") && a.id !== "acc-cash");
+  }, [accounts]);
+  const qrAccounts = useMemo(() => {
+    return accounts.filter((a) => a.type === "UPI_HOLDING" && a.id !== "acc-cash");
+  }, [accounts]);
   const incomeAccount = accounts.find((a) => a.type === "INCOME") || accounts[accounts.length - 1];
+
+  // Quick 1-tap add preset portal
+  const handleQuickAddPortal = (portalPreset: typeof COMMON_CSP_PORTALS[0]) => {
+    if (onAddAccount) {
+      const newAcc: TreasuryAccount = {
+        id: `acc-${portalPreset.type.toLowerCase()}-${Date.now()}`,
+        code: portalPreset.code,
+        name: portalPreset.name,
+        type: portalPreset.type,
+        currentBalancePaisa: 0n,
+        isActive: true,
+        metadata: { source: portalPreset.desc },
+      };
+      onAddAccount(newAcc);
+      if (portalPreset.type === "WALLET" || portalPreset.type === "BANK") {
+        setAepsPortalId(newAcc.id);
+        setDmtSourceId(newAcc.id);
+      }
+      if (portalPreset.type === "UPI_HOLDING" || portalPreset.type === "BANK") {
+        setCashoutQrId(newAcc.id);
+      }
+    } else if (onOpenAccountManager) {
+      onOpenAccountManager();
+    }
+  };
 
   // ============================================================================
   // TAB 1: AEPS AADHAAR ATM STATE
   // ============================================================================
+  const [aepsCustomerName, setAepsCustomerName] = useState<string>("");
   const [aepsAmount, setAepsAmount] = useState<string>("3000");
   const [aepsAadhaar, setAepsAadhaar] = useState<string>("");
   const [aepsBank, setAepsBank] = useState<string>("State Bank of India");
   const [aepsMobile, setAepsMobile] = useState<string>("");
   const [aepsRrn, setAepsRrn] = useState<string>("");
-  const [aepsPortalId, setAepsPortalId] = useState<string>(() => walletAccounts[0]?.id || "");
+  const [aepsPortalId, setAepsPortalId] = useState<string>(() => portalAccounts[0]?.id || "");
   const [aepsFeeMode, setAepsFeeMode] = useState<FeeCollectionMode>("CUT_FROM_CASH");
   const [aepsCustomFee, setAepsCustomFee] = useState<string>("0");
   const [aepsScanText, setAepsScanText] = useState<string>("");
+  const [aepsScanNotice, setAepsScanNotice] = useState<string | null>(null);
+
+  // Sync portal selections whenever accounts are created
+  useEffect(() => {
+    if (portalAccounts.length > 0) {
+      if (!portalAccounts.some((a) => a.id === aepsPortalId)) {
+        setAepsPortalId(portalAccounts[0].id);
+      }
+    }
+  }, [portalAccounts, aepsPortalId]);
 
   // Default AEPS Commission calculation table (standard Indian BC slabs)
   const aepsCommissionPaisa = useMemo(() => {
@@ -150,6 +205,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
     return BigInt(Math.round(num * 100));
   }, [aepsCustomFee]);
 
+  // Net physical cash customer walks away with
   const aepsCashHandedPaisa = useMemo(() => {
     if (aepsFeeMode === "CUT_FROM_CASH") {
       return aepsAmountPaisa >= aepsFeePaisa ? aepsAmountPaisa - aepsFeePaisa : 0n;
@@ -161,45 +217,97 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
     return aepsCommissionPaisa + aepsFeePaisa;
   }, [aepsCommissionPaisa, aepsFeePaisa]);
 
-  // Scan-Fill SMS Parser for AEPS
+  // Enhanced Scan-Fill SMS / Notification Parser for AEPS (Spice Money, DigiPay, Fino, PayNearby)
   const handleParseAepsSms = () => {
     if (!aepsScanText.trim()) return;
     const txt = aepsScanText;
+    let parsedFields: string[] = [];
 
-    // Extract amount: e.g. "Rs. 3000" or "INR 3,000.00" or "3000.00"
-    const amtMatch = txt.match(/(?:Rs\.?|INR|Amt[:\s]*)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+    // 1. Amount: "Rs. 3000" or "INR 3,000.00" or "Amt: 3000" or "Amount: 3000"
+    const amtMatch = txt.match(/(?:Rs\.?|INR|Amt[:\s]*|Amount[:\s]*)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
     if (amtMatch) {
-      setAepsAmount(amtMatch[1].replace(/,/g, ""));
+      const cleanAmt = amtMatch[1].replace(/,/g, "");
+      if (parseFloat(cleanAmt) > 0) {
+        setAepsAmount(cleanAmt);
+        parsedFields.push(`₹${cleanAmt}`);
+      }
     }
 
-    // Extract RRN / UTR: e.g. "RRN: 123456789012" or "Ref No 123456789"
-    const rrnMatch = txt.match(/(?:RRN|Ref(?:erence)?\s*(?:No)?|UTR)[:\s]*([0-9]{8,16})/i);
+    // 2. RRN / UTR / Reference: 8-18 digit numeric ID
+    const rrnMatch = txt.match(/(?:RRN|Ref(?:erence)?\s*(?:No\.?)?|UTR|Txn\s*ID)[:\s]*([0-9]{8,18})/i);
     if (rrnMatch) {
       setAepsRrn(rrnMatch[1]);
+      parsedFields.push(`RRN:${rrnMatch[1].slice(-4)}`);
     }
 
-    // Extract Bank Name if present
-    const banks = [
-      "SBI",
-      "State Bank of India",
-      "PNB",
-      "Punjab National Bank",
-      "Bangiya Gramin Vikash Bank",
-      "BGVB",
-      "UCO Bank",
-      "Central Bank",
-      "Bank of India",
-      "Union Bank",
-      "Airtel Payments Bank",
-      "Fino Payments Bank",
+    // 3. Aadhaar: "ending with 5482", "XXXXXXXX5482", "XXXX-XXXX-5482", "Aadhaar: 5482"
+    const aadhaarMatch =
+      txt.match(/(?:Aadhaar(?:\s+No)?(?:\s+ending\s+with)?|A\/C|Acct)[:\s]*(?:[X*]{4,8}[-\s]*)?([0-9]{4})/i) ||
+      txt.match(/[X*]{4,8}[-\s]*([0-9]{4})/i);
+    if (aadhaarMatch) {
+      setAepsAadhaar(aadhaarMatch[1]);
+      parsedFields.push(`Aadhaar:••${aadhaarMatch[1]}`);
+    }
+
+    // 4. Mobile number: 10 digits starting with 6, 7, 8, or 9
+    const mobileMatch = txt.match(/(?:Mob(?:ile)?|Phone|Customer)[:\s]*([6-9][0-9]{9})/i);
+    if (mobileMatch) {
+      setAepsMobile(mobileMatch[1]);
+      parsedFields.push(`Mob:${mobileMatch[1]}`);
+    }
+
+    // 5. Customer Bank identification
+    const banks: { name: string; regex: RegExp }[] = [
+      { name: "State Bank of India", regex: /\b(SBI|State Bank of India)\b/i },
+      { name: "Bangiya Gramin Vikash Bank", regex: /\b(BGVB|Bangiya Gramin|Bangiya Gramin Vikash Bank)\b/i },
+      { name: "Paschim Banga Gramin Bank", regex: /\b(PBGB|Paschim Banga|Paschim Banga Gramin Bank)\b/i },
+      { name: "Punjab National Bank", regex: /\b(PNB|Punjab National Bank)\b/i },
+      { name: "UCO Bank", regex: /\b(UCO Bank|UCO)\b/i },
+      { name: "Central Bank of India", regex: /\b(Central Bank|CBI)\b/i },
+      { name: "Bank of India", regex: /\b(Bank of India|BOI)\b/i },
+      { name: "Union Bank of India", regex: /\b(Union Bank|UBI)\b/i },
+      { name: "Canara Bank", regex: /\b(Canara Bank|Canara)\b/i },
+      { name: "Airtel Payments Bank", regex: /\b(Airtel Payments Bank|Airtel)\b/i },
+      { name: "Fino Payments Bank", regex: /\b(Fino Payments Bank|Fino Mitra|Fino)\b/i },
+      { name: "Paytm Payments Bank", regex: /\b(Paytm Payments Bank|Paytm)\b/i },
+      { name: "Bandhan Bank", regex: /\b(Bandhan Bank|Bandhan)\b/i },
+      { name: "Indian Bank", regex: /\b(Indian Bank)\b/i },
+      { name: "Axis Bank", regex: /\b(Axis Bank)\b/i },
+      { name: "HDFC Bank", regex: /\b(HDFC Bank|HDFC)\b/i },
+      { name: "ICICI Bank", regex: /\b(ICICI Bank|ICICI)\b/i },
     ];
     for (const b of banks) {
-      if (new RegExp(b, "i").test(txt)) {
-        setAepsBank(b);
+      if (b.regex.test(txt)) {
+        setAepsBank(b.name);
+        parsedFields.push(b.name);
         break;
       }
     }
 
+    // 6. Detect portal provider if mentioned
+    const portalKeywords = [
+      { key: /digipay/i, namePart: "digipay" },
+      { key: /spice\s*money/i, namePart: "spice" },
+      { key: /fino/i, namePart: "fino" },
+      { key: /paynearby/i, namePart: "paynearby" },
+    ];
+    for (const pk of portalKeywords) {
+      if (pk.key.test(txt)) {
+        const matchingAcc = accounts.find((a) => a.name.toLowerCase().includes(pk.namePart));
+        if (matchingAcc) {
+          setAepsPortalId(matchingAcc.id);
+          parsedFields.push(matchingAcc.name);
+        }
+        break;
+      }
+    }
+
+    if (parsedFields.length > 0) {
+      setAepsScanNotice(`✓ Auto-filled: ${parsedFields.join(" • ")}`);
+    } else {
+      setAepsScanNotice("⚠️ Could not detect standard fields. Please verify format.");
+    }
+    setTimeout(() => setAepsScanNotice(null), 5000);
     setAepsScanText("");
   };
 
@@ -210,16 +318,22 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       return;
     }
 
+    if (portalAccounts.length === 0) {
+      alert("Please add or select a CSP portal wallet (e.g. DigiPay, Spice Money, Fino) first.");
+      return;
+    }
+
     const todayDate = new Date().toISOString().split("T")[0];
     const txnId = `AEPS-${Date.now().toString().slice(-6)}`;
-    const portalAcc = accounts.find((a) => a.id === aepsPortalId) || walletAccounts[0] || cashAccount;
-    const qrAcc = qrAccounts[0] || cashAccount;
+    const portalAcc = accounts.find((a) => a.id === aepsPortalId) || portalAccounts[0];
+    const qrAcc = qrAccounts[0] || accounts.find((a) => a.type === "BANK") || cashAccount;
 
     const newTxn: DigitalTransaction = {
       id: txnId,
       date: todayDate,
       time: timeStr,
       serviceType: "AEPS",
+      customerName: aepsCustomerName.trim() || undefined,
       customerMobile: aepsMobile.trim() || undefined,
       beneficiaryDetails: `${aepsBank} • Aadhaar: ${aepsAadhaar.trim() || "XXXX"}`,
       amountPaisa: aepsAmountPaisa,
@@ -248,14 +362,38 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       qrAccount: qrAcc,
     });
 
-    // Record via handler
+    // Exact Double-Entry Cash & Balance Calculations
+    let cashDelta = 0n;
+    let qrDelta = 0n;
+    let khataDelta = 0n;
+    const portalDelta = aepsAmountPaisa + aepsCommissionPaisa;
+
+    if (aepsFeeMode === "CUT_FROM_CASH") {
+      // Customer handed (Amount - Fee). Drawer pays out (Amount - Fee).
+      cashDelta = -(aepsAmountPaisa >= aepsFeePaisa ? aepsAmountPaisa - aepsFeePaisa : 0n);
+    } else if (aepsFeeMode === "SEPARATE_CASH") {
+      // Drawer hands Amount notes, drawer receives Fee notes. Net physical cash leaving drawer is -(Amount - Fee)
+      cashDelta = -(aepsAmountPaisa >= aepsFeePaisa ? aepsAmountPaisa - aepsFeePaisa : 0n);
+    } else if (aepsFeeMode === "UPI_QR") {
+      // Drawer hands Amount notes. Fee received in Shop QR holding.
+      cashDelta = -aepsAmountPaisa;
+      qrDelta = aepsFeePaisa;
+    } else if (aepsFeeMode === "KHATA") {
+      // Drawer hands Amount notes. Fee debited to customer Khata debt.
+      cashDelta = -aepsAmountPaisa;
+      khataDelta = aepsFeePaisa;
+    }
+
     onRecordDigitalTransaction({
       transaction: newTxn,
       journal,
-      cashDeltaPaisa: -aepsCashHandedPaisa,
-      sourceDeltaPaisa: aepsAmountPaisa + aepsCommissionPaisa,
-      portalDeltaPaisa: aepsAmountPaisa + aepsCommissionPaisa,
+      cashDeltaPaisa: cashDelta,
+      sourceDeltaPaisa: portalDelta,
+      portalDeltaPaisa: portalDelta,
+      qrDeltaPaisa: qrDelta,
+      khataDeltaPaisa: khataDelta,
       customerPhone: aepsMobile.trim() || undefined,
+      customerName: aepsCustomerName.trim() || undefined,
     });
 
     setTransactions((prev) => [newTxn, ...prev]);
@@ -268,17 +406,26 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
   // ============================================================================
   // TAB 2: DMT MONEY REMITTANCE STATE
   // ============================================================================
+  const [dmtSenderName, setDmtSenderName] = useState<string>("");
   const [dmtAmount, setDmtAmount] = useState<string>("5000");
   const [dmtSenderMobile, setDmtSenderMobile] = useState<string>("");
   const [dmtAccountNum, setDmtAccountNum] = useState<string>("");
   const [dmtAccountConfirm, setDmtAccountConfirm] = useState<string>("");
   const [dmtIfsc, setDmtIfsc] = useState<string>("SBIN0001234");
   const [dmtBeneficiaryName, setDmtBeneficiaryName] = useState<string>("");
-  const [dmtSourceId, setDmtSourceId] = useState<string>(() => walletAccounts[0]?.id || bankAccounts[0]?.id || "");
+  const [dmtSourceId, setDmtSourceId] = useState<string>(() => portalAccounts[0]?.id || "");
   const [dmtFeeMode, setDmtFeeMode] = useState<FeeCollectionMode>("SEPARATE_CASH");
   const [dmtCustomerFeePct, setDmtCustomerFeePct] = useState<string>("1.0");
   const [dmtPortalSurchargePct, setDmtPortalSurchargePct] = useState<string>("0.4");
   const [dmtUtr, setDmtUtr] = useState<string>("");
+
+  useEffect(() => {
+    if (portalAccounts.length > 0) {
+      if (!portalAccounts.some((a) => a.id === dmtSourceId)) {
+        setDmtSourceId(portalAccounts[0].id);
+      }
+    }
+  }, [portalAccounts, dmtSourceId]);
 
   const dmtAmountPaisa = useMemo(() => {
     const num = parseFloat(dmtAmount) || 0;
@@ -311,17 +458,22 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       alert("Beneficiary account numbers do not match!");
       return;
     }
+    if (portalAccounts.length === 0) {
+      alert("Please add or select a source portal or bank account first.");
+      return;
+    }
 
     const todayDate = new Date().toISOString().split("T")[0];
     const txnId = `DMT-${Date.now().toString().slice(-6)}`;
-    const sourceAcc = accounts.find((a) => a.id === dmtSourceId) || walletAccounts[0] || bankAccounts[0] || cashAccount;
-    const qrAcc = qrAccounts[0] || cashAccount;
+    const sourceAcc = accounts.find((a) => a.id === dmtSourceId) || portalAccounts[0];
+    const qrAcc = qrAccounts[0] || accounts.find((a) => a.type === "BANK") || cashAccount;
 
     const newTxn: DigitalTransaction = {
       id: txnId,
       date: todayDate,
       time: timeStr,
       serviceType: "DMT",
+      customerName: dmtSenderName.trim() || undefined,
       customerMobile: dmtSenderMobile.trim() || undefined,
       beneficiaryDetails: `${dmtBeneficiaryName.trim() || "Beneficiary"} • A/C: ${dmtAccountNum.trim()} • ${dmtIfsc.toUpperCase().trim()}`,
       amountPaisa: dmtAmountPaisa,
@@ -350,8 +502,28 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       qrAccount: qrAcc,
     });
 
-    const cashDelta = dmtFeeMode === "SEPARATE_CASH" ? dmtAmountPaisa + dmtCustomerFeePaisa : dmtAmountPaisa;
-    const sourceDelta = -(dmtAmountPaisa + dmtPortalSurchargePaisa);
+    let cashDelta = 0n;
+    let sourceDelta = 0n;
+    let qrDelta = 0n;
+    let khataDelta = 0n;
+
+    if (dmtFeeMode === "SEPARATE_CASH") {
+      cashDelta = dmtAmountPaisa + dmtCustomerFeePaisa;
+      sourceDelta = -(dmtAmountPaisa + dmtPortalSurchargePaisa);
+    } else if (dmtFeeMode === "CUT_FROM_CASH") {
+      cashDelta = dmtAmountPaisa;
+      const transferSent =
+        dmtAmountPaisa >= dmtCustomerFeePaisa ? dmtAmountPaisa - dmtCustomerFeePaisa : dmtAmountPaisa;
+      sourceDelta = -(transferSent + dmtPortalSurchargePaisa);
+    } else if (dmtFeeMode === "UPI_QR") {
+      cashDelta = dmtAmountPaisa;
+      qrDelta = dmtCustomerFeePaisa;
+      sourceDelta = -(dmtAmountPaisa + dmtPortalSurchargePaisa);
+    } else if (dmtFeeMode === "KHATA") {
+      cashDelta = dmtAmountPaisa;
+      khataDelta = dmtCustomerFeePaisa;
+      sourceDelta = -(dmtAmountPaisa + dmtPortalSurchargePaisa);
+    }
 
     onRecordDigitalTransaction({
       transaction: newTxn,
@@ -359,7 +531,10 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       cashDeltaPaisa: cashDelta,
       sourceDeltaPaisa: sourceDelta,
       portalDeltaPaisa: sourceDelta,
+      qrDeltaPaisa: qrDelta,
+      khataDeltaPaisa: khataDelta,
       customerPhone: dmtSenderMobile.trim() || undefined,
+      customerName: dmtSenderName.trim() || undefined,
     });
 
     setTransactions((prev) => [newTxn, ...prev]);
@@ -370,12 +545,20 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
   // ============================================================================
   // TAB 3: UPI CASH OUT STATE
   // ============================================================================
+  const [cashoutCustomerName, setCashoutCustomerName] = useState<string>("Walk-in Customer");
   const [cashoutAmount, setCashoutAmount] = useState<string>("1000");
   const [cashoutFee, setCashoutFee] = useState<string>("10");
   const [cashoutFeeMode, setCashoutFeeMode] = useState<FeeCollectionMode>("INCLUDED_IN_QR");
-  const [cashoutQrId, setCashoutQrId] = useState<string>(() => qrAccounts[0]?.id || bankAccounts[0]?.id || "");
+  const [cashoutQrId, setCashoutQrId] = useState<string>(() => qrAccounts[0]?.id || portalAccounts[0]?.id || "");
   const [cashoutUtr, setCashoutUtr] = useState<string>("");
   const [cashoutCustomerMobile, setCashoutCustomerMobile] = useState<string>("");
+
+  useEffect(() => {
+    const validQrs = accounts.filter((a) => (a.type === "UPI_HOLDING" || a.type === "BANK") && a.id !== "acc-cash");
+    if (validQrs.length > 0 && !validQrs.some((a) => a.id === cashoutQrId)) {
+      setCashoutQrId(validQrs[0].id);
+    }
+  }, [accounts, cashoutQrId]);
 
   const cashoutAmountPaisa = useMemo(() => {
     const num = parseFloat(cashoutAmount) || 0;
@@ -408,15 +591,18 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       return;
     }
 
+    const validQrs = accounts.filter((a) => (a.type === "UPI_HOLDING" || a.type === "BANK") && a.id !== "acc-cash");
+    const qrAcc = accounts.find((a) => a.id === cashoutQrId) || validQrs[0] || cashAccount;
+
     const todayDate = new Date().toISOString().split("T")[0];
     const txnId = `QROUT-${Date.now().toString().slice(-6)}`;
-    const qrAcc = accounts.find((a) => a.id === cashoutQrId) || qrAccounts[0] || bankAccounts[0] || cashAccount;
 
     const newTxn: DigitalTransaction = {
       id: txnId,
       date: todayDate,
       time: timeStr,
       serviceType: "UPI_CASHOUT",
+      customerName: cashoutCustomerName.trim() || undefined,
       customerMobile: cashoutCustomerMobile.trim() || undefined,
       beneficiaryDetails: `UPI Cash Out via ${qrAcc.name}`,
       amountPaisa: cashoutAmountPaisa,
@@ -443,13 +629,27 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       feeIncomeAccount: incomeAccount,
     });
 
+    let cashDelta = 0n;
+    let sourceDelta = 0n;
+
+    if (cashoutFeeMode === "INCLUDED_IN_QR") {
+      cashDelta = -cashoutAmountPaisa;
+      sourceDelta = cashoutAmountPaisa + cashoutFeePaisa;
+    } else {
+      const netCashHanded =
+        cashoutAmountPaisa >= cashoutFeePaisa ? cashoutAmountPaisa - cashoutFeePaisa : 0n;
+      cashDelta = -netCashHanded;
+      sourceDelta = cashoutAmountPaisa;
+    }
+
     onRecordDigitalTransaction({
       transaction: newTxn,
       journal,
-      cashDeltaPaisa: -cashoutCashHandedPaisa,
-      sourceDeltaPaisa: cashoutQrTotalPaisa,
-      portalDeltaPaisa: cashoutQrTotalPaisa,
+      cashDeltaPaisa: cashDelta,
+      sourceDeltaPaisa: sourceDelta,
+      portalDeltaPaisa: sourceDelta,
       customerPhone: cashoutCustomerMobile.trim() || undefined,
+      customerName: cashoutCustomerName.trim() || undefined,
     });
 
     setTransactions((prev) => [newTxn, ...prev]);
@@ -529,6 +729,10 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       doc.text(`Bank RRN/UTR: ${txn.rrnOrUtr}`, 6, y);
       y += 4;
     }
+    if (txn.customerName) {
+      doc.text(`Customer: ${txn.customerName}`, 6, y);
+      y += 4;
+    }
     if (txn.customerMobile) {
       doc.text(`Customer Mobile: ${txn.customerMobile}`, 6, y);
       y += 4;
@@ -601,6 +805,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
           <div class="divider"></div>
           <div class="row"><span>Txn ID:</span><span class="bold">${txn.id}</span></div>
           <div class="row"><span>Date:</span><span>${txn.date} ${txn.time}</span></div>
+          ${txn.customerName ? `<div class="row"><span>Customer:</span><span class="bold">${txn.customerName}</span></div>` : ""}
           ${txn.rrnOrUtr ? `<div class="row"><span>RRN/UTR:</span><span class="bold">${txn.rrnOrUtr}</span></div>` : ""}
           ${txn.customerMobile ? `<div class="row"><span>Mobile:</span><span>${txn.customerMobile}</span></div>` : ""}
           ${txn.beneficiaryDetails ? `<div style="font-size: 9px; margin-top: 2px;">${txn.beneficiaryDetails}</div>` : ""}
@@ -635,6 +840,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       `*Service:* ${txn.serviceType} Banking\n` +
       `*Txn ID:* ${txn.id}\n` +
       `*Date:* ${txn.date} ${txn.time}\n` +
+      (txn.customerName ? `*Customer:* ${txn.customerName}\n` : "") +
       (txn.rrnOrUtr ? `*Bank RRN/UTR:* ${txn.rrnOrUtr}\n` : "") +
       `*Amount:* ${formatPaisa(txn.amountPaisa)}\n` +
       (txn.customerFeePaisa > 0n ? `*Fee:* ${formatPaisa(txn.customerFeePaisa)}\n` : "") +
@@ -728,6 +934,44 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
             </button>
           ))}
         </div>
+
+        {/* 1-TAP QUICK SETUP BAR WHEN NO PORTALS ARE AVAILABLE */}
+        {portalAccounts.length === 0 && (
+          <div className="mt-3.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <span className="text-base">⚡</span>
+              <div>
+                <span className="text-xs font-black text-amber-900 dark:text-amber-200">
+                  Quick Setup CSP Portals:
+                </span>
+                <span className="text-[11px] text-amber-700 dark:text-amber-300 ml-1.5 hidden sm:inline">
+                  Click your portal below to link float balances instantly.
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {COMMON_CSP_PORTALS.slice(0, 5).map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={() => handleQuickAddPortal(p)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] cursor-pointer shadow-xs transition active:scale-95"
+                >
+                  + {p.name}
+                </button>
+              ))}
+              {onOpenAccountManager && (
+                <button
+                  type="button"
+                  onClick={onOpenAccountManager}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] cursor-pointer shadow-xs"
+                >
+                  ⚙️ Custom...
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ==================================================================== */}
@@ -757,6 +1001,19 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 Auto-Fill
               </button>
             </div>
+
+            {aepsScanNotice && (
+              <div className="p-2.5 rounded-xl bg-teal-600 text-white text-xs font-bold animate-in slide-in-from-top-1 flex items-center justify-between">
+                <span>{aepsScanNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setAepsScanNotice(null)}
+                  className="text-white/80 hover:text-white ml-2 text-xs font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleProcessAeps} className="space-y-4">
               {/* Express Withdrawal Chips */}
@@ -829,8 +1086,37 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 </div>
               </div>
 
-              {/* Aadhaar Last 4 & Mobile */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Customer Name, Aadhaar Last 4 & Mobile */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                    Customer Name (Khata/Receipt)
+                  </label>
+                  <input
+                    type="text"
+                    list="csp-customers-list"
+                    placeholder="e.g. Ramesh Mondal"
+                    value={aepsCustomerName}
+                    onChange={(e) => {
+                      setAepsCustomerName(e.target.value);
+                      const matched = customers.find(
+                        (c) => c.name.toLowerCase() === e.target.value.toLowerCase()
+                      );
+                      if (matched && matched.phone) {
+                        setAepsMobile(matched.phone);
+                      }
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
+                  />
+                  <datalist id="csp-customers-list">
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.phone ? `${c.phone} • Due: ${formatPaisa(c.currentDuePaisa)}` : ""}
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                     Aadhaar Last 4 Digits
@@ -897,21 +1183,36 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
               {/* Portal Source & RRN */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                    Credited Portal Wallet / Bank
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Credited Portal Wallet / Bank *
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {onOpenAccountManager && (
+                        <button
+                          type="button"
+                          onClick={onOpenAccountManager}
+                          className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          + Manage
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <select
                     value={aepsPortalId}
                     onChange={(e) => setAepsPortalId(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
-                    {accounts
-                      .filter((a) => a.type === "WALLET" || a.type === "BANK" || a.id === "acc-cash")
-                      .map((a) => (
+                    {portalAccounts.length === 0 ? (
+                      <option value="">⚠️ No portal wallet configured (Add below)</option>
+                    ) : (
+                      portalAccounts.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.name} ({formatPaisa(a.currentBalancePaisa)})
                         </option>
-                      ))}
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -929,9 +1230,36 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 </div>
               </div>
 
+              {/* Quick Setup Bar if no portals configured */}
+              {portalAccounts.length === 0 && (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 text-xs font-black">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Please add your CSP portal to record withdrawals:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {COMMON_CSP_PORTALS.slice(0, 4).map((p) => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => handleQuickAddPortal(p)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer shadow-xs"
+                      >
+                        + {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md shadow-emerald-600/30 cursor-pointer transition-transform active:scale-99 flex items-center justify-center gap-2"
+                disabled={portalAccounts.length === 0}
+                className={`w-full py-3 rounded-xl font-black text-xs shadow-md transition-transform flex items-center justify-center gap-2 ${
+                  portalAccounts.length === 0
+                    ? "bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed"
+                    : "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30 cursor-pointer active:scale-99"
+                }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Confirm & Record AEPS Withdrawal ({formatPaisa(aepsAmountPaisa)})</span>
@@ -999,7 +1327,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-8 bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-5 rounded-2xl shadow-xs space-y-4">
             <form onSubmit={handleProcessDmt} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                     Transfer Amount (₹) *
@@ -1012,6 +1340,28 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                     value={dmtAmount}
                     onChange={(e) => setDmtAmount(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                    Sender Name (Customer)
+                  </label>
+                  <input
+                    type="text"
+                    list="csp-customers-list"
+                    placeholder="e.g. Ramesh Mondal"
+                    value={dmtSenderName}
+                    onChange={(e) => {
+                      setDmtSenderName(e.target.value);
+                      const matched = customers.find(
+                        (c) => c.name.toLowerCase() === e.target.value.toLowerCase()
+                      );
+                      if (matched && matched.phone) {
+                        setDmtSenderMobile(matched.phone);
+                      }
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-sky-500"
                   />
                 </div>
 
@@ -1098,21 +1448,36 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
               {/* Surcharge & Source */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                    Outward Source Account
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Outward Source Account *
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {onOpenAccountManager && (
+                        <button
+                          type="button"
+                          onClick={onOpenAccountManager}
+                          className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                        >
+                          + Manage
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <select
                     value={dmtSourceId}
                     onChange={(e) => setDmtSourceId(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
-                    {accounts
-                      .filter((a) => a.type === "WALLET" || a.type === "BANK")
-                      .map((a) => (
+                    {portalAccounts.length === 0 ? (
+                      <option value="">⚠️ No portal/bank account configured</option>
+                    ) : (
+                      portalAccounts.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.name} ({formatPaisa(a.currentBalancePaisa)})
                         </option>
-                      ))}
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -1176,9 +1541,36 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 </div>
               </div>
 
+              {/* Quick Setup Bar if no portals configured */}
+              {portalAccounts.length === 0 && (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 text-xs font-black">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Please add your outward remittance portal to send DMT:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {COMMON_CSP_PORTALS.slice(0, 4).map((p) => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => handleQuickAddPortal(p)}
+                        className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs cursor-pointer shadow-xs"
+                      >
+                        + {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-xs shadow-md shadow-sky-600/30 cursor-pointer transition-transform active:scale-99 flex items-center justify-center gap-2"
+                disabled={portalAccounts.length === 0}
+                className={`w-full py-3 rounded-xl font-black text-xs shadow-md transition-transform flex items-center justify-center gap-2 ${
+                  portalAccounts.length === 0
+                    ? "bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed"
+                    : "bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-sky-600/30 cursor-pointer active:scale-99"
+                }`}
               >
                 <ArrowRightLeft className="w-4 h-4" />
                 <span>Confirm & Send DMT Remittance ({formatPaisa(dmtAmountPaisa)})</span>
@@ -1204,7 +1596,11 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 <div className="p-2.5 rounded-xl bg-white dark:bg-slate-700/80 border border-sky-200/80 dark:border-slate-600 flex items-center justify-between">
                   <span className="text-slate-600 dark:text-slate-300">🌐 Deducted from Portal / Bank:</span>
                   <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
-                    -{formatPaisa(dmtAmountPaisa + dmtPortalSurchargePaisa)}
+                    -{formatPaisa(
+                      dmtFeeMode === "CUT_FROM_CASH"
+                        ? (dmtAmountPaisa >= dmtCustomerFeePaisa ? dmtAmountPaisa - dmtCustomerFeePaisa : 0n) + dmtPortalSurchargePaisa
+                        : dmtAmountPaisa + dmtPortalSurchargePaisa
+                    )}
                   </span>
                 </div>
 
@@ -1244,7 +1640,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-8 bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-5 rounded-2xl shadow-xs space-y-4">
             <form onSubmit={handleProcessCashout} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                     Cash Customer Wants (₹) *
@@ -1257,6 +1653,28 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                     value={cashoutAmount}
                     onChange={(e) => setCashoutAmount(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                    Customer Name (Khata/Receipt)
+                  </label>
+                  <input
+                    type="text"
+                    list="csp-customers-list"
+                    placeholder="e.g. Ramesh Mondal"
+                    value={cashoutCustomerName}
+                    onChange={(e) => {
+                      setCashoutCustomerName(e.target.value);
+                      const matched = customers.find(
+                        (c) => c.name.toLowerCase() === e.target.value.toLowerCase()
+                      );
+                      if (matched && matched.phone) {
+                        setCashoutCustomerMobile(matched.phone);
+                      }
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-purple-500"
                   />
                 </div>
 
@@ -1292,21 +1710,36 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                    Destination QR / Bank Account
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Destination QR / Bank Account *
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {onOpenAccountManager && (
+                        <button
+                          type="button"
+                          onClick={onOpenAccountManager}
+                          className="text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                        >
+                          + Manage
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <select
                     value={cashoutQrId}
                     onChange={(e) => setCashoutQrId(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
-                    {accounts
-                      .filter((a) => a.type === "UPI_HOLDING" || a.type === "BANK" || a.id === "acc-cash")
-                      .map((a) => (
+                    {qrAccounts.length === 0 ? (
+                      <option value="">⚠️ No UPI QR account configured (Add below)</option>
+                    ) : (
+                      qrAccounts.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.name} ({formatPaisa(a.currentBalancePaisa)})
                         </option>
-                      ))}
+                      ))
+                    )}
                   </select>
                 </div>
               </div>
@@ -1340,9 +1773,31 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 </div>
               </div>
 
+              {/* Quick Setup for QR Soundbox if none configured */}
+              {qrAccounts.length === 0 && (
+                <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-300 dark:border-purple-700/60 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-purple-900 dark:text-purple-200 text-xs font-bold">
+                    <QrCode className="w-4 h-4 text-purple-600 shrink-0" />
+                    <span>No Counter UPI QR found:</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddPortal(COMMON_CSP_PORTALS[5])}
+                    className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs cursor-pointer shadow-xs"
+                  >
+                    + Add Counter UPI QR
+                  </button>
+                </div>
+              )}
+
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 via-violet-600 to-purple-600 hover:from-purple-500 hover:to-violet-500 text-white font-black text-xs shadow-md shadow-purple-600/30 cursor-pointer transition-transform active:scale-99 flex items-center justify-center gap-2"
+                disabled={qrAccounts.length === 0}
+                className={`w-full py-3 rounded-xl font-black text-xs shadow-md transition-transform flex items-center justify-center gap-2 ${
+                  qrAccounts.length === 0
+                    ? "bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed"
+                    : "bg-gradient-to-r from-purple-600 via-violet-600 to-purple-600 hover:from-purple-500 hover:to-violet-500 text-white shadow-purple-600/30 cursor-pointer active:scale-99"
+                }`}
               >
                 <QrCode className="w-4 h-4" />
                 <span>Confirm & Dispense Physical Cash ({formatPaisa(cashoutCashHandedPaisa)})</span>
@@ -1424,7 +1879,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search UTR, RRN, mobile, details..."
+                placeholder="Search UTR, RRN, mobile, customer..."
                 value={registerSearch}
                 onChange={(e) => setRegisterSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-medium focus:outline-emerald-500"
@@ -1443,7 +1898,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                   <tr>
                     <th className="p-3">Txn ID / Time</th>
                     <th className="p-3">Type</th>
-                    <th className="p-3">Details</th>
+                    <th className="p-3">Details / Customer</th>
                     <th className="p-3">RRN / UTR</th>
                     <th className="p-3 text-right">Amount</th>
                     <th className="p-3 text-right">Net Margin</th>
@@ -1452,7 +1907,12 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 font-medium">
                   {filteredRegister.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-750/50">
+                    <tr
+                      key={t.id}
+                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-750/50 ${
+                        t.status === "VOID" ? "opacity-60 bg-rose-50/20" : ""
+                      }`}
+                    >
                       <td className="p-3">
                         <span className="font-mono font-bold text-slate-900 dark:text-white block">
                           {t.id}
@@ -1463,21 +1923,32 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                       </td>
 
                       <td className="p-3">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black ${
-                            t.serviceType === "AEPS"
-                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                              : t.serviceType === "DMT"
-                              ? "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300"
-                              : "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300"
-                          }`}
-                        >
-                          {t.serviceType}
-                        </span>
+                        {t.status === "VOID" ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 line-through">
+                            VOID {t.serviceType}
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black ${
+                              t.serviceType === "AEPS"
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                : t.serviceType === "DMT"
+                                ? "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300"
+                                : "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300"
+                            }`}
+                          >
+                            {t.serviceType}
+                          </span>
+                        )}
                       </td>
 
                       <td className="p-3 text-slate-700 dark:text-slate-300 max-w-xs truncate">
-                        {t.beneficiaryDetails || "General"}
+                        {t.customerName && (
+                          <span className="font-black text-slate-900 dark:text-white block">
+                            {t.customerName}
+                          </span>
+                        )}
+                        <span className="text-[11px] block">{t.beneficiaryDetails || "General"}</span>
                         {t.customerMobile && (
                           <span className="text-[10px] text-slate-400 block font-mono">
                             {t.customerMobile}
@@ -1489,11 +1960,21 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                         {t.rrnOrUtr || "-"}
                       </td>
 
-                      <td className="p-3 text-right font-mono font-black text-slate-900 dark:text-white">
+                      <td
+                        className={`p-3 text-right font-mono font-black ${
+                          t.status === "VOID" ? "line-through text-slate-400" : "text-slate-900 dark:text-white"
+                        }`}
+                      >
                         {formatPaisa(t.amountPaisa)}
                       </td>
 
-                      <td className="p-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      <td
+                        className={`p-3 text-right font-mono font-bold ${
+                          t.status === "VOID"
+                            ? "line-through text-slate-400"
+                            : "text-emerald-600 dark:text-emerald-400"
+                        }`}
+                      >
                         +{formatPaisa(t.netProfitPaisa)}
                       </td>
 
@@ -1533,11 +2014,18 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                                   )
                                 ) {
                                   onVoidDigitalTransaction(t.id);
-                                  setTransactions((prev) => prev.filter((item) => item.id !== t.id));
+                                  setTransactions((prev) =>
+                                    prev.map((item) => (item.id === t.id ? { ...item, status: "VOID" } : item))
+                                  );
                                 }
                               }}
-                              title="Void Transaction"
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                              disabled={t.status === "VOID"}
+                              title={t.status === "VOID" ? "Transaction already voided" : "Void Transaction"}
+                              className={`p-1.5 rounded-lg transition ${
+                                t.status === "VOID"
+                                  ? "text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                                  : "text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                              }`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
