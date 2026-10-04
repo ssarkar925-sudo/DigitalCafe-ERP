@@ -19,6 +19,7 @@ import {
   fetchLiveCatalogItems,
   supabase,
 } from "./core/supabase";
+import { Sidebar } from "./components/Sidebar";
 
 export type NavTab = "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
 
@@ -225,229 +226,51 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 flex flex-col font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 flex font-sans transition-colors duration-200">
       {/* ==================================================================== */}
-      {/* ZONE 1: PERMANENT TOP FINANCIAL DASHBOARD (Always Visible Across Tabs) */}
+      {/* 1. SIDEBAR (All Balances, Move Money, and Navigation live here!)     */}
       {/* ==================================================================== */}
-      <header className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-slate-200 dark:border-zinc-800 px-6 py-2.5 sticky top-0 z-40 transition-colors shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* BRANDING & IST CLOCK */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2.5">
-              <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white text-lg font-black shadow-md shadow-emerald-500/20">
-                ⚡
-              </span>
-              <div>
-                <h1 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase leading-none">
-                  Sarkar Communication
-                </h1>
-                <p className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 tracking-wide mt-0.5">
-                  Digital Seva & Banking CSP
-                </p>
-              </div>
-            </div>
+      <Sidebar
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        cashDrawerPaisa={cashAccount.currentBalancePaisa}
+        bankTotalPaisa={totalBankPaisa}
+        qrTotalPaisa={totalQrPaisa}
+        portalFloatTotalPaisa={totalPortalFloatPaisa}
+        khataDueTotalPaisa={totalKhataDuePaisa}
+        timeStr={timeStr}
+        isCloudSynced={!!supabase}
+        onOpenMoveMoney={() => setIsMoveOpen(true)}
+      />
 
-            <div className="hidden md:flex items-center gap-2 pl-4 border-l border-slate-200 dark:border-zinc-800 text-xs font-mono">
-              <span className="text-slate-700 dark:text-zinc-300 font-bold">{timeStr}</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            </div>
-          </div>
-
-          {/* 5 LIVE LIQUIDITY PILLARS */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 text-xs font-semibold">
-            {/* Drawer */}
-            <div className="bg-slate-100 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-700/80 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs">
-              <span className="text-sm">💵</span>
-              <div>
-                <span className="text-[9px] block uppercase tracking-wider text-slate-500 dark:text-zinc-400 font-bold">
-                  Cash Drawer
-                </span>
-                <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
-                  {formatPaisa(cashAccount.currentBalancePaisa)}
-                </span>
-              </div>
-            </div>
-
-            {/* Banks */}
-            <div className="bg-slate-100 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-700/80 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs">
-              <span className="text-sm">🏦</span>
-              <div>
-                <span className="text-[9px] block uppercase tracking-wider text-slate-500 dark:text-zinc-400 font-bold">
-                  Banks
-                </span>
-                <span className="font-mono font-black text-sky-600 dark:text-sky-400">
-                  {formatPaisa(totalBankPaisa)}
-                </span>
-              </div>
-            </div>
-
-            {/* UPI QR */}
-            <div className="bg-slate-100 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-700/80 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs">
-              <span className="text-sm">📱</span>
-              <div>
-                <span className="text-[9px] block uppercase tracking-wider text-slate-500 dark:text-zinc-400 font-bold">
-                  UPI QR
-                </span>
-                <span className="font-mono font-black text-purple-600 dark:text-purple-400">
-                  {formatPaisa(totalQrPaisa)}
-                </span>
-              </div>
-            </div>
-
-            {/* Portal Floats */}
-            <div className="bg-slate-100 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-700/80 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs">
-              <span className="text-sm">🌐</span>
-              <div>
-                <span className="text-[9px] block uppercase tracking-wider text-slate-500 dark:text-zinc-400 font-bold">
-                  Floats
-                </span>
-                <span className="font-mono font-black text-amber-600 dark:text-amber-400">
-                  {formatPaisa(totalPortalFloatPaisa)}
-                </span>
-              </div>
-            </div>
-
-            {/* Khata Due */}
-            <div className="bg-slate-100 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-700/80 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs">
-              <span className="text-sm">👥</span>
-              <div>
-                <span className="text-[9px] block uppercase tracking-wider text-slate-500 dark:text-zinc-400 font-bold">
-                  Khata Due
-                </span>
-                <span className="font-mono font-black text-rose-600 dark:text-rose-400">
-                  {formatPaisa(totalKhataDuePaisa)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* TOP ACTIONS */}
-          <div className="flex items-center gap-2">
+      {/* ==================================================================== */}
+      {/* 2. MAIN APPLICATION WORKSPACE (NO TOPBAR, NO DASHBOARD HEADER!)       */}
+      {/*    100% full height dedicated content area                           */}
+      {/* ==================================================================== */}
+      <main className="flex-1 min-w-0 h-screen overflow-y-auto p-6 transition-colors">
+        {/* TOAST NOTICE */}
+        {toastNotice && (
+          <div className="mb-4 bg-emerald-600 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-150 flex items-center justify-between">
+            <span>{toastNotice}</span>
             <button
               type="button"
-              onClick={() => setIsMoveOpen(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-sm shadow-indigo-600/30 transition cursor-pointer"
+              onClick={() => setToastNotice(null)}
+              className="text-white/80 hover:text-white font-bold ml-4 cursor-pointer"
             >
-              <span>🔄</span> Move Money <kbd className="hidden lg:inline bg-indigo-700 px-1 rounded text-[9px]">F6</kbd>
+              ✕
             </button>
-
-            <button
-              type="button"
-              onClick={toggleTheme}
-              title="Toggle Theme (Alt+T)"
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300 text-xs transition cursor-pointer"
-            >
-              {isDark ? "☀️" : "🌙"}
-            </button>
-
-            <span
-              className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
-                supabase
-                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${supabase ? "bg-emerald-500" : "bg-amber-500"}`}></span>
-              {supabase ? "Cloud" : "Local"}
-            </span>
           </div>
-        </div>
+        )}
 
-        {/* ==================================================================== */}
-        {/* ZONE 2: 6 CORE DEDICATED WORKSPACE TABS */}
-        {/* ==================================================================== */}
-        <nav className="flex items-center gap-1 mt-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800/80 overflow-x-auto no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setActiveTab("pos")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === "pos"
-                ? "bg-emerald-600 text-white shadow-xs"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
-            }`}
-          >
-            <span>⚡</span> Express POS <kbd className="hidden sm:inline bg-black/20 px-1 rounded text-[9px]">F1</kbd>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("csp")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === "csp"
-                ? "bg-sky-600 text-white shadow-xs"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
-            }`}
-          >
-            <span>🏧</span> Biometric CSP <kbd className="hidden sm:inline bg-black/20 px-1 rounded text-[9px]">F2</kbd>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("bbps")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === "bbps"
-                ? "bg-indigo-600 text-white shadow-xs"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
-            }`}
-          >
-            <span>⚡</span> Recharges & BBPS <kbd className="hidden sm:inline bg-black/20 px-1 rounded text-[9px]">F3</kbd>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("khata_stock")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === "khata_stock"
-                ? "bg-purple-600 text-white shadow-xs"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
-            }`}
-          >
-            <span>👥</span> Khata & Stock <kbd className="hidden sm:inline bg-black/20 px-1 rounded text-[9px]">F4</kbd>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("accounts")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === "accounts"
-                ? "bg-amber-600 text-white shadow-xs"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
-            }`}
-          >
-            <span>🏦</span> CashBook & Accounts <kbd className="hidden sm:inline bg-black/20 px-1 rounded text-[9px]">F5</kbd>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("settings")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ml-auto cursor-pointer ${
-              activeTab === "settings"
-                ? "bg-slate-800 dark:bg-zinc-700 text-white shadow-xs"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
-            }`}
-          >
-            <span>⚙️</span> Settings
-          </button>
-        </nav>
-      </header>
-
-      {/* TOAST NOTICE */}
-      {toastNotice && (
-        <div className="bg-emerald-600 text-white text-xs font-black px-6 py-2 text-center shadow-lg animate-in slide-in-from-top-2 duration-150 sticky top-[90px] z-30">
-          {toastNotice}
-        </div>
-      )}
-
-      {/* ==================================================================== */}
-      {/* ACTIVE WORKSPACE CONTENT AREA */}
-      {/* ==================================================================== */}
-      <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
+        {/* ACTIVE MODULE CONTAINER (Immediate Full-Height Workspace) */}
         {activeTab === "pos" && (
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
             <span className="text-4xl block mb-2">⚡</span>
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 1: Express Counter POS</h2>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
-              Ready for Phase 4: One-click service tiles, PDF receipt downloads, thermal printing, and catalog manager.
+              Ready for Phase 4: Service tiles, PDF receipt downloads, thermal printing, and catalog manager.
             </p>
           </div>
         )}
@@ -504,7 +327,7 @@ export function App() {
       </main>
 
       {/* ==================================================================== */}
-      {/* UNIVERSAL CONTRA MOVE MONEY MODAL */}
+      {/* UNIVERSAL CONTRA MOVE MONEY MODAL                                    */}
       {/* ==================================================================== */}
       {isMoveOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
