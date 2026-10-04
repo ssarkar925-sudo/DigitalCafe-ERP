@@ -440,6 +440,7 @@ export function App() {
             onClearCatalog={handleClearCatalog}
             customers={customers}
             accounts={accounts}
+            invoices={invoices}
             onRecordSale={handleRecordPosSale}
             timeStr={timeStr}
           />

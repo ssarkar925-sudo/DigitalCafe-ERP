@@ -60,6 +60,7 @@ interface PosTerminalProps {
   customers: Customer[];
   onAddCustomer?: (customer: Customer) => void;
   accounts: TreasuryAccount[];
+  invoices?: InvoiceRecord[];
   onRecordSale: (params: {
     invoice: InvoiceRecord;
     journal: JournalEntry;
@@ -99,6 +100,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   customers,
   onAddCustomer,
   accounts,
+  invoices = [],
   onRecordSale,
   timeStr,
 }) => {
@@ -111,6 +113,26 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     setViewMode(mode);
     localStorage.setItem("dc_pos_view_mode", mode);
   };
+
+  // --- Today's Sales Ticker Memo ---
+  const todayDateStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const todaySalesPaisa = useMemo(() => {
+    if (!invoices) return 0n;
+    return invoices
+      .filter((inv) => inv.date === todayDateStr)
+      .reduce((sum, inv) => sum + inv.totalPaisa, 0n);
+  }, [invoices, todayDateStr]);
+
+  const todayInvoicesCount = useMemo(() => {
+    if (!invoices) return 0;
+    return invoices.filter((inv) => inv.date === todayDateStr).length;
+  }, [invoices, todayDateStr]);
+
+  // --- Quick Custom Charge (One-Time Fast Line Item) State ---
+  const [isQuickChargeModalOpen, setIsQuickChargeModalOpen] = useState(false);
+  const [quickChargeName, setQuickChargeName] = useState("Print / Xerox");
+  const [quickChargePrice, setQuickChargePrice] = useState("");
+  const [quickChargeQty, setQuickChargeQty] = useState("1");
 
   // --- Search & Filter State ---
   const [searchQuery, setSearchQuery] = useState("");
@@ -421,6 +443,38 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     });
   };
 
+  // Popular Presets not yet in catalog (for Quick-Add bar)
+  const remainingPresets = useMemo(() => {
+    const existingNames = new Set(catalogItems.map((c) => c.name.toLowerCase()));
+    return COMMON_CYBER_SERVICES.filter((preset) => !existingNames.has(preset.name.toLowerCase()));
+  }, [catalogItems]);
+
+  // Handle Quick Custom Line Item
+  const handleAddQuickCharge = (e: React.FormEvent) => {
+    e.preventDefault();
+    const priceNum = parseFloat(quickChargePrice);
+    if (isNaN(priceNum) || priceNum <= 0) return;
+    const qty = Math.max(1, parseInt(quickChargeQty, 10) || 1);
+    const pricePaisa = BigInt(Math.round(priceNum * 100));
+
+    const customItem: CartItem = {
+      id: `custom-${Date.now()}`,
+      catalogId: `custom-cat-${Date.now()}`,
+      name: quickChargeName.trim() || "Custom Service",
+      quantity: qty,
+      unitPricePaisa: pricePaisa,
+      costPricePaisa: 0n,
+      totalPaisa: BigInt(qty) * pricePaisa,
+      kind: "SERVICE",
+    };
+
+    setCart((prev) => [...prev, customItem]);
+    setIsQuickChargeModalOpen(false);
+    setQuickChargePrice("");
+    setQuickChargeQty("1");
+    setQuickChargeName("Print / Xerox");
+  };
+
   // Quick Discount Selector
   const applyQuickDiscount = (val: "none" | "5" | "10" | "20" | "5pct" | "10pct") => {
     if (val === "none") {
@@ -728,6 +782,20 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     clearCart();
   };
 
+  // Keyboard Shortcut: F12 to complete sale immediately
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F12") {
+        e.preventDefault();
+        if (cart.length > 0 && (paymentMethod !== "SPLIT" || splitRemainingPaisa === 0n)) {
+          handleCompleteSale();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cart, paymentMethod, splitRemainingPaisa, customerName, customerPhone, payableTotalPaisa]);
+
   // 1. Generate & Download PDF Receipt using jsPDF
   const handleDownloadPdf = (inv: InvoiceRecord) => {
     const doc = new jsPDF({
@@ -964,97 +1032,143 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     switch (cat) {
       case "Xerox & Print":
         return {
-          pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
-          border: "border-emerald-200/90 dark:border-emerald-800/60 hover:border-emerald-400 dark:hover:border-emerald-500",
+          pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
+          topBorder: "border-t-4 border-t-emerald-500",
+          border: "border-emerald-200/80 hover:border-emerald-400 dark:border-emerald-800/60 dark:hover:border-emerald-500",
           bg: "bg-white dark:bg-slate-800",
-          accentBg: "bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
+          accentBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400",
+          color: "text-emerald-600 dark:text-emerald-400",
         };
       case "Photos & Docs":
         return {
-          pill: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20",
-          border: "border-indigo-200/90 dark:border-indigo-800/60 hover:border-indigo-400 dark:hover:border-indigo-500",
+          pill: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/20",
+          topBorder: "border-t-4 border-t-indigo-500",
+          border: "border-indigo-200/80 hover:border-indigo-400 dark:border-indigo-800/60 dark:hover:border-indigo-500",
           bg: "bg-white dark:bg-slate-800",
-          accentBg: "bg-indigo-500/10 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400",
+          accentBg: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400",
+          color: "text-indigo-600 dark:text-indigo-400",
         };
       case "Online Forms":
         return {
-          pill: "bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/20",
-          border: "border-violet-200/90 dark:border-violet-800/60 hover:border-violet-400 dark:hover:border-violet-500",
+          pill: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20",
+          topBorder: "border-t-4 border-t-violet-500",
+          border: "border-violet-200/80 hover:border-violet-400 dark:border-violet-800/60 dark:hover:border-violet-500",
           bg: "bg-white dark:bg-slate-800",
-          accentBg: "bg-violet-500/10 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400",
+          accentBg: "bg-violet-50 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400",
+          color: "text-violet-600 dark:text-violet-400",
         };
       case "Lamination & Binding":
         return {
-          pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
-          border: "border-amber-200/90 dark:border-amber-800/60 hover:border-amber-400 dark:hover:border-amber-500",
+          pill: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+          topBorder: "border-t-4 border-t-amber-500",
+          border: "border-amber-200/80 hover:border-amber-400 dark:border-amber-800/60 dark:hover:border-amber-500",
           bg: "bg-white dark:bg-slate-800",
-          accentBg: "bg-amber-500/10 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400",
+          accentBg: "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400",
+          color: "text-amber-600 dark:text-amber-400",
         };
       case "Consumables Goods":
         return {
-          pill: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
-          border: "border-rose-200/90 dark:border-rose-800/60 hover:border-rose-400 dark:hover:border-rose-500",
+          pill: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
+          topBorder: "border-t-4 border-t-rose-500",
+          border: "border-rose-200/80 hover:border-rose-400 dark:border-rose-800/60 dark:hover:border-rose-500",
           bg: "bg-white dark:bg-slate-800",
-          accentBg: "bg-rose-500/10 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400",
+          accentBg: "bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400",
+          color: "text-rose-600 dark:text-rose-400",
         };
       default:
         return {
-          pill: "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/20",
-          border: "border-teal-200/90 dark:border-teal-800/60 hover:border-teal-400 dark:hover:border-teal-500",
+          pill: "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20",
+          topBorder: "border-t-4 border-t-teal-500",
+          border: "border-teal-200/80 hover:border-teal-400 dark:border-teal-800/60 dark:hover:border-teal-500",
           bg: "bg-white dark:bg-slate-800",
-          accentBg: "bg-teal-500/10 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400",
+          accentBg: "bg-teal-50 text-teal-600 dark:bg-teal-950/60 dark:text-teal-400",
+          color: "text-teal-600 dark:text-teal-400",
         };
     }
   };
 
   return (
     <div className="flex-1 min-h-0 flex flex-col w-full overflow-hidden space-y-3">
-      {/* 1. TOP HEADER & CONTROLS BAR (Compact shrink-0) */}
-      <div className="shrink-0 flex items-center justify-between gap-3 bg-white/95 dark:bg-slate-800/95 border border-slate-200/90 dark:border-slate-700/80 px-4 py-2.5 rounded-2xl shadow-xs transition-colors">
-        <div className="flex items-center gap-2.5">
-          <span className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-            <Receipt className="w-4 h-4" />
-          </span>
-          <h1 className="text-sm font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            <span>Counter POS</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-              Module 01
+      {/* 1. EXECUTIVE POS COMMAND DECK (shrink-0) */}
+      <div className="shrink-0 flex items-center justify-between gap-3 bg-white/95 dark:bg-slate-800/95 border border-slate-200/90 dark:border-slate-700/80 px-4 py-2 rounded-2xl shadow-xs transition-colors">
+        {/* Left: Counter 01 Live Beacon */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
-          </h1>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hidden sm:inline-block">
-            {catalogItems.length} Services in Catalog
-          </span>
+            <div className="leading-tight">
+              <h1 className="text-xs font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-1.5">
+                <span>Express Counter 01</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                  Ready
+                </span>
+              </h1>
+              <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
+                Sarkar Communication • Digital Seva & CSP
+              </span>
+            </div>
+          </div>
         </div>
 
+        {/* Center: Live Revenue Ticker + Clock */}
+        <div className="hidden md:flex items-center gap-4 text-xs font-bold text-slate-600 dark:text-slate-300">
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-750 px-2.5 py-1 rounded-xl border border-slate-200/60 dark:border-slate-700">
+            <span className="text-slate-400 font-medium">Today's Sales:</span>
+            <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+              {formatPaisa(todaySalesPaisa)}
+            </span>
+            <span className="text-[10px] text-slate-400">({todayInvoicesCount} bills)</span>
+          </div>
+
+          <div className="flex items-center gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            <Clock className="w-3.5 h-3.5 text-slate-400" />
+            <span>{timeStr}</span>
+          </div>
+        </div>
+
+        {/* Right: Quick Action Controls */}
         <div className="flex items-center gap-2">
-          {/* Storage Information Chip */}
+          {/* Quick Custom Charge Button */}
           <button
             type="button"
-            onClick={() => setIsCatalogManagerOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-            title="Manage all catalog items in a full table view"
+            onClick={() => setIsQuickChargeModalOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Charge custom amount on the fly without saving to catalog"
           >
-            <Database className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Catalog Manager</span>
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden sm:inline">+ Custom Charge</span>
+            <span className="sm:hidden">+ Custom</span>
           </button>
 
-          {/* Held Orders Button with Pulse Badge */}
+          {/* Held Orders Button */}
           {heldOrders.length > 0 && (
             <button
               type="button"
               onClick={() => setIsHeldOrdersModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer animate-pulse"
+              className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer animate-pulse"
             >
               <PauseCircle className="w-3.5 h-3.5 text-amber-500" />
-              <span>Held Orders ({heldOrders.length})</span>
+              <span>Held ({heldOrders.length})</span>
             </button>
           )}
 
-          {/* Primary "+ Add Service / Product" Button */}
+          {/* Manage Catalog Button */}
+          <button
+            type="button"
+            onClick={() => setIsCatalogManagerOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <Database className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden sm:inline">Catalog</span>
+          </button>
+
+          {/* Add Service Button */}
           <button
             type="button"
             onClick={handleOpenAddModal}
-            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1 shadow-sm shadow-emerald-600/20 transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>+ Add Service</span>
@@ -1062,14 +1176,14 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         </div>
       </div>
 
-      {/* 2. MAIN 2-COLUMN HARDWARE POS REGISTER DESK */}
+      {/* 2. MAIN FULL-VIEWPORT 2-COLUMN HARDWARE POS REGISTER */}
       <div className="flex-1 min-h-0 grid grid-cols-12 gap-3.5 items-stretch">
         {/* ================================================================= */}
         {/* LEFT COLUMN: CATALOG HUB (7 Cols)                                 */}
         {/* ================================================================= */}
         <div className="col-span-12 lg:col-span-7 flex flex-col min-h-0 h-full bg-slate-50/60 dark:bg-slate-850/40 rounded-2xl border border-slate-200/80 dark:border-slate-700/70 p-3 overflow-hidden">
-          {/* Top Controls: Search, View Toggle & Category Pills (shrink-0) */}
-          <div className="shrink-0 space-y-2 mb-2.5">
+          {/* Top Controls: Search, View Switch, Category Tabs (shrink-0) */}
+          <div className="shrink-0 space-y-2 mb-2">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1080,6 +1194,15 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   placeholder="Search services or products..."
                   className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
               {/* Grid / List Switch */}
@@ -1113,29 +1236,37 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               </div>
             </div>
 
-            {/* Category Filter Pills */}
+            {/* Category Filter Pills with Live Item Counts */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-2.5 py-1 rounded-xl text-[10px] font-bold whitespace-nowrap transition cursor-pointer ${
-                    selectedCategory === cat
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-650 text-slate-600 dark:text-slate-300 border border-slate-200/70 dark:border-slate-600"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+              {CATEGORIES.map((cat) => {
+                const count = cat === "All" ? catalogItems.length : catalogItems.filter((i) => i.category === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1 ${
+                      selectedCategory === cat
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-650 text-slate-600 dark:text-slate-300 border border-slate-200/70 dark:border-slate-600"
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    <span className={`text-[9px] px-1 rounded-full ${
+                      selectedCategory === cat ? "bg-white/25 text-white" : "bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-300"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Scrollable Catalog Body: (flex-1 min-h-0 overflow-y-auto pr-1) */}
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          {/* Scrollable Catalog Body (flex-1 min-h-0 overflow-y-auto pr-1 space-y-3) */}
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-3">
             {catalogItems.length === 0 ? (
-              /* Clean Empty State: 100% Zero Preloaded Data with Clear + Add Option + 1-Click Starters */
+              /* Clean 0-Items State: 100% Zero Preloaded Data with Clear + Add Option + 1-Click Starters */
               <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-6 rounded-2xl space-y-5 text-center shadow-xs">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-xs">
                   <Plus className="w-6 h-6" />
@@ -1145,7 +1276,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     Fresh Catalog Ready (0 Items)
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
-                    Your catalog starts 100% clean without preloaded data. Add custom services or tap standard cyber cafe presets below.
+                    Your catalog starts 100% clean without demo data. Add your custom services or tap standard presets below to start in 1 click.
                   </p>
                 </div>
 
@@ -1164,12 +1295,12 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>⚡ Add 8 Popular Services (1-Click)</span>
+                    <span>⚡ Add All 8 Standard Services (1-Click)</span>
                   </button>
                 </div>
 
                 {/* 1-Click Preset Cards */}
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-700/60 space-y-2 text-left">
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-700/60 space-y-2 text-left">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
                     <span>⚡</span> 1-Click Popular Presets (Tap to Add):
                   </span>
@@ -1208,25 +1339,60 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 No services match "{searchQuery}" in "{selectedCategory}".
               </div>
             ) : viewMode === "grid" ? (
-              /* VIEW A: GRID VIEW (Vibrant Multi-Colour Cards) */
+              /* GRID VIEW: High-Impact Hardware POS Touch Tiles */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* TILE 1: Quick Custom Charge Tile (Permanent Fast Utility) */}
+                <div
+                  onClick={() => setIsQuickChargeModalOpen(true)}
+                  className="p-3.5 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700/80 bg-gradient-to-br from-indigo-50/70 via-purple-50/30 to-white dark:from-indigo-950/30 dark:via-slate-800 dark:to-slate-800 hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group min-h-[115px]"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="p-2 rounded-xl bg-indigo-500 text-white shadow-sm group-hover:scale-110 transition-transform">
+                        <Sparkles className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <h4 className="text-xs font-black text-indigo-950 dark:text-indigo-200">
+                          + Quick Custom Charge
+                        </h4>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
+                          Ad-hoc print, scan, form
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                      ⚡ Instant
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 pt-2 border-t border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                    <span>Charge custom amount on the fly</span>
+                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </div>
+
+                {/* USER CATALOG TILES */}
                 {filteredItems.map((item) => {
                   const inCart = cart.find((c) => c.catalogId === item.id);
                   const theme = getCategoryTheme(item.category);
                   return (
                     <div
                       key={item.id}
-                      className={`p-3 rounded-2xl border transition-all flex flex-col justify-between relative group ${
+                      onClick={() => addToCart(item, 1)}
+                      className={`p-3 rounded-2xl border-2 transition-all flex flex-col justify-between relative group cursor-pointer select-none ${theme.topBorder} ${
                         inCart
-                          ? "bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/50 dark:from-emerald-950/30 dark:to-slate-800 border-emerald-400 dark:border-emerald-600 shadow-sm"
-                          : `${theme.bg} ${theme.border} shadow-2xs`
+                          ? "bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-800 border-emerald-400 dark:border-emerald-500 shadow-md scale-[1.01]"
+                          : `${theme.bg} ${theme.border} shadow-2xs hover:shadow-sm hover:scale-[1.01]`
                       }`}
                     >
-                      {/* Action Buttons: Edit (✏️) and Delete (🗑️) */}
-                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-70 group-hover:opacity-100 transition">
+                      {/* Top Action Icons: Edit (✏️) and Delete (🗑️) */}
+                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-70 group-hover:opacity-100 transition z-10">
                         <button
                           type="button"
-                          onClick={() => handleOpenEditModal(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditModal(item);
+                          }}
                           title="Edit this service"
                           className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition cursor-pointer"
                         >
@@ -1234,7 +1400,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (window.confirm(`Delete "${item.name}" from catalog?`)) {
                               onDeleteCatalogItem(item.id);
                             }
@@ -1246,10 +1413,11 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         </button>
                       </div>
 
+                      {/* Main Tile Details */}
                       <div>
                         <div className="flex items-start justify-between gap-2 pr-12">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-lg p-1.5 rounded-xl ${theme.accentBg} flex items-center justify-center shrink-0`}>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className={`text-xl p-2 rounded-xl ${theme.accentBg} flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform`}>
                               {item.icon}
                             </span>
                             <div className="min-w-0">
@@ -1263,30 +1431,33 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           </div>
 
                           <div className="text-right shrink-0">
-                            <span className="text-xs font-black font-mono text-emerald-600 dark:text-emerald-400">
+                            <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 block">
                               {formatPaisa(item.pricePaisa)}
                             </span>
                             {inCart && (
-                              <span className="block text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.2 rounded-md mt-0.5">
-                                {inCart.quantity} in cart
+                              <span className="inline-block text-[9px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.2 rounded-md mt-0.5 shadow-2xs animate-pulse">
+                                🛒 {inCart.quantity} in cart
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Quick Multiplier Chips */}
+                      {/* Quick Multiplier Stepper Row */}
                       <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-1">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                          Add:
+                        <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+                          Tap to Add:
                         </span>
                         <div className="flex items-center gap-1">
                           {[1, 5, 25, 50, 100].map((mult) => (
                             <button
                               key={mult}
                               type="button"
-                              onClick={() => addToCart(item, mult)}
-                              className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-emerald-500 hover:text-white dark:bg-slate-700 dark:hover:bg-emerald-600 text-[10px] font-black font-mono text-slate-700 dark:text-slate-200 transition cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToCart(item, mult);
+                              }}
+                              className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white dark:bg-slate-700 dark:hover:bg-emerald-600 text-[10px] font-black font-mono text-slate-700 dark:text-slate-200 transition cursor-pointer active:scale-95"
                             >
                               +{mult}
                             </button>
@@ -1298,7 +1469,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 })}
               </div>
             ) : (
-              /* VIEW B: LIST VIEW (High-density tabular rows) */
+              /* VIEW B: LIST VIEW */
               <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 rounded-2xl overflow-hidden shadow-xs divide-y divide-slate-100 dark:divide-slate-700/60">
                 {filteredItems.map((item) => {
                   const inCart = cart.find((c) => c.catalogId === item.id);
@@ -1306,11 +1477,11 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className={`p-2.5 flex items-center justify-between gap-2.5 hover:bg-slate-50 dark:hover:bg-slate-750/50 transition ${
+                      onClick={() => addToCart(item, 1)}
+                      className={`p-2.5 flex items-center justify-between gap-2.5 hover:bg-slate-50 dark:hover:bg-slate-750/50 transition cursor-pointer ${
                         inCart ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""
                       }`}
                     >
-                      {/* Item Info */}
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span className={`text-base p-1 rounded-lg ${theme.accentBg} shrink-0`}>
                           {item.icon}
@@ -1330,13 +1501,15 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         </div>
                       </div>
 
-                      {/* Quick Multipliers in List View */}
                       <div className="flex items-center gap-1 shrink-0">
                         {[1, 5, 25, 50].map((mult) => (
                           <button
                             key={mult}
                             type="button"
-                            onClick={() => addToCart(item, mult)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(item, mult);
+                            }}
                             className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-emerald-500 hover:text-white dark:bg-slate-700 dark:hover:bg-emerald-600 text-[10px] font-black font-mono text-slate-700 dark:text-slate-200 transition cursor-pointer"
                           >
                             +{mult}
@@ -1344,11 +1517,13 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         ))}
                       </div>
 
-                      {/* Edit & Delete Actions */}
                       <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-700 pl-2">
                         <button
                           type="button"
-                          onClick={() => handleOpenEditModal(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditModal(item);
+                          }}
                           title="Edit service"
                           className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition cursor-pointer"
                         >
@@ -1356,7 +1531,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (window.confirm(`Delete "${item.name}" from catalog?`)) {
                               onDeleteCatalogItem(item.id);
                             }
@@ -1372,22 +1548,60 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 })}
               </div>
             )}
+
+            {/* 1-Click Popular Cyber Cafe Shortcuts Bar (when catalog has < 8 items) */}
+            {catalogItems.length > 0 && catalogItems.length < 8 && remainingPresets.length > 0 && (
+              <div className="pt-3 border-t border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <span>⚡</span> Quick-Add Popular Services to Your Shop:
+                  </span>
+                  <span className="text-[9px] text-slate-400">1-Tap to add to shop</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {remainingPresets.slice(0, 4).map((srv, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleAddPresetItem(srv)}
+                      className="p-2 rounded-xl bg-white hover:bg-emerald-50 dark:bg-slate-750 dark:hover:bg-emerald-950/30 border border-slate-200 hover:border-emerald-400 dark:border-slate-700 dark:hover:border-emerald-600 text-left transition flex items-center justify-between gap-2 group cursor-pointer shadow-2xs"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-base p-1 rounded-lg bg-slate-100 dark:bg-slate-700 group-hover:scale-110 transition-transform">
+                          {srv.icon}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
+                            {srv.name}
+                          </p>
+                          <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                            +{formatPaisa(srv.pricePaisa)}
+                          </span>
+                        </div>
+                      </div>
+                      <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* ================================================================= */}
-        {/* RIGHT COLUMN: BILL REGISTER & CHECKOUT (5 Cols)                   */}
+        {/* RIGHT COLUMN: ACTIVE SALE REGISTER & CHECKOUT (5 Cols)            */}
         {/* ================================================================= */}
         <div className="col-span-12 lg:col-span-5 flex flex-col min-h-0 h-full bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 p-3.5 shadow-sm overflow-hidden">
           {/* Register Top Bar (shrink-0) */}
-          <div className="shrink-0 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/60 pb-2.5">
+          <div className="shrink-0 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/60 pb-2">
             <div className="flex items-center gap-2">
               <ShoppingBag className="w-4 h-4 text-emerald-500" />
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
                 Active Sale Register
               </h3>
               {cart.length > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                <span className="text-[10px] font-black px-2 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   {cart.reduce((sum, ci) => sum + ci.quantity, 0)} items
                 </span>
               )}
@@ -1418,107 +1632,105 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             </div>
           </div>
 
-          {/* Customer Input Dock (shrink-0) */}
-          <div className="shrink-0 my-2 relative bg-slate-50 dark:bg-slate-750/70 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="relative">
-                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                  Customer Name
-                </label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onFocus={() => setIsCustomerDropdownOpen(true)}
-                  onChange={(e) => {
-                    setCustomerName(e.target.value);
-                    setIsCustomerDropdownOpen(true);
-                  }}
-                  placeholder="Walk-in Customer"
-                  className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
-                />
+          {/* Compact Customer Pill Ribbon (Takes only 34px! shrink-0 my-2) */}
+          <div className="shrink-0 my-2 relative bg-slate-50 dark:bg-slate-750/80 p-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-2">
+            <div className="relative flex-1 min-w-0 flex items-center gap-1.5 pl-1">
+              <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={customerName}
+                onFocus={() => setIsCustomerDropdownOpen(true)}
+                onChange={(e) => {
+                  setCustomerName(e.target.value);
+                  setIsCustomerDropdownOpen(true);
+                }}
+                placeholder="Walk-in Customer"
+                className="bg-transparent border-0 p-0 text-xs font-bold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden w-full truncate"
+              />
 
-                {/* Auto-suggest dropdown */}
-                {isCustomerDropdownOpen && matchedCustomers.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 max-h-40 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60 animate-in fade-in-50 duration-100">
-                    {matchedCustomers.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setCustomerName(c.name);
-                          if (c.phone) setCustomerPhone(c.phone);
-                          setIsCustomerDropdownOpen(false);
-                        }}
-                        className="w-full p-2 text-left hover:bg-emerald-50/80 dark:hover:bg-slate-700 flex items-center justify-between text-xs transition cursor-pointer"
-                      >
-                        <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{c.name}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{c.phone || "No phone"}</p>
-                        </div>
-                        {c.currentDuePaisa > 0n && (
-                          <span className="text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">
-                            Due: {formatPaisa(c.currentDuePaisa)}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>WhatsApp Phone</span>
-                  {customerName !== "Walk-in Customer" && (
+              {/* Auto-suggest dropdown */}
+              {isCustomerDropdownOpen && matchedCustomers.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 max-h-40 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60 animate-in fade-in-50 duration-100">
+                  {matchedCustomers.map((c) => (
                     <button
+                      key={c.id}
                       type="button"
                       onClick={() => {
-                        setCustomerName("Walk-in Customer");
-                        setCustomerPhone("");
+                        setCustomerName(c.name);
+                        if (c.phone) setCustomerPhone(c.phone);
+                        setIsCustomerDropdownOpen(false);
                       }}
-                      className="text-[9px] text-slate-400 hover:text-rose-500 cursor-pointer"
+                      className="w-full p-2 text-left hover:bg-emerald-50/80 dark:hover:bg-slate-700 flex items-center justify-between text-xs transition cursor-pointer"
                     >
-                      Reset
+                      <div>
+                        <p className="font-bold text-slate-900 dark:text-white">{c.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{c.phone || "No phone"}</p>
+                      </div>
+                      {c.currentDuePaisa > 0n && (
+                        <span className="text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">
+                          Due: {formatPaisa(c.currentDuePaisa)}
+                        </span>
+                      )}
                     </button>
-                  )}
-                </label>
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="9876543210"
-                  className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-1 text-xs font-mono font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
-                />
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Existing Khata Due Debt Alert for this Customer */}
-            {selectedCustomerRecord && selectedCustomerRecord.currentDuePaisa > 0n && (
-              <div className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 flex items-center justify-between text-[10px] font-bold text-rose-800 dark:text-rose-300">
-                <span className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                  Existing Khata Balance Due:
-                </span>
-                <span className="font-mono text-xs font-black text-rose-700 dark:text-rose-300">
-                  {formatPaisa(selectedCustomerRecord.currentDuePaisa)}
-                </span>
-              </div>
+            <div className="h-4 w-px bg-slate-300 dark:bg-slate-600 shrink-0" />
+
+            <div className="flex items-center gap-1 w-32 shrink-0 pr-1">
+              <span className="text-[10px] text-slate-400 font-bold shrink-0">📱</span>
+              <input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="WhatsApp Phone"
+                className="bg-transparent border-0 p-0 text-xs font-mono font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden w-full"
+              />
+            </div>
+
+            {customerName !== "Walk-in Customer" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerName("Walk-in Customer");
+                  setCustomerPhone("");
+                }}
+                className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                title="Reset to Walk-in"
+              >
+                ✕
+              </button>
             )}
           </div>
 
-          {/* Cart Items List: (flex-1 min-h-0 overflow-y-auto pr-1) */}
+          {/* Existing Khata Due Debt Alert for this Customer */}
+          {selectedCustomerRecord && selectedCustomerRecord.currentDuePaisa > 0n && (
+            <div className="shrink-0 mb-2 p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 flex items-center justify-between text-[10px] font-bold text-rose-800 dark:text-rose-300">
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                Existing Khata Due:
+              </span>
+              <span className="font-mono text-xs font-black text-rose-700 dark:text-rose-300">
+                {formatPaisa(selectedCustomerRecord.currentDuePaisa)}
+              </span>
+            </div>
+          )}
+
+          {/* Scrollable Cart Items List (flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5) */}
           <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5">
             {cart.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-xs text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-xs text-slate-400 dark:text-slate-500 border-2 border-dashed border-slate-200 dark:border-slate-700/80 rounded-2xl space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs">
                   <ShoppingBag className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="font-extrabold text-sm text-slate-700 dark:text-slate-200">
+                  <p className="font-extrabold text-sm text-slate-800 dark:text-slate-200">
                     Register Standby • Cart Empty
                   </p>
                   <p className="text-[11px] text-slate-400 max-w-xs mt-0.5">
-                    Tap any service or product from the catalog on the left to add items to this customer's bill.
+                    Tap any service on the left or click "+ Quick Custom Charge" to add items to bill.
                   </p>
                 </div>
               </div>
@@ -1526,10 +1738,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               cart.map((ci) => (
                 <div
                   key={ci.catalogId}
-                  className="p-2 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200/80 dark:border-slate-600 flex items-center justify-between gap-2 shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-700 transition"
+                  className="p-2 rounded-xl bg-slate-50 dark:bg-slate-750/70 border border-slate-200/80 dark:border-slate-700/70 flex items-center justify-between gap-2 shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-700 transition"
                 >
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                    <p className="text-xs font-black text-slate-900 dark:text-white truncate">
                       {ci.name}
                     </p>
                     <span className="text-[10px] text-slate-400 font-mono">
@@ -1538,6 +1750,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
+                    {/* Stepper */}
                     <div className="flex items-center border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-2xs">
                       <button
                         type="button"
@@ -1572,7 +1785,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       type="button"
                       onClick={() => removeFromCart(ci.catalogId)}
                       className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition"
-                      title="Remove from cart"
+                      title="Remove item"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1582,11 +1795,11 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             )}
           </div>
 
-          {/* Checkout & Tender Section (shrink-0 pt-2 border-t) */}
-          <div className="shrink-0 pt-2 border-t border-slate-200/80 dark:border-slate-700">
+          {/* Checkout & Tender Dock (shrink-0 pt-2 border-t border-slate-200/80 dark:border-slate-700 space-y-2) */}
+          <div className="shrink-0 pt-2 border-t border-slate-200/80 dark:border-slate-700 space-y-2">
             {cart.length === 0 ? (
-              /* Sleek Empty Standby Card at Bottom */
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-750/70 border border-slate-200/80 dark:border-slate-700 space-y-2">
+              /* Clean Standby State */
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-750/70 border border-slate-200/80 dark:border-slate-700 space-y-2 text-center">
                 <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold px-1">
                   <span>Payable Total:</span>
                   <span className="font-mono font-bold text-slate-400">₹0.00</span>
@@ -1601,46 +1814,21 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 </button>
               </div>
             ) : (
-              /* ACTIVE CHECKOUT CONTROLS */
-              <div className="space-y-2.5 overflow-y-auto max-h-[46vh] pr-1">
-                {/* Subtotal, Fast Discount Chips & Payable Grand Total */}
-                <div className="bg-slate-50 dark:bg-slate-750/70 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-700 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    <span>Subtotal</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white">
-                      {formatPaisa(subtotalPaisa)}
+              /* ACTIVE CHECKOUT & TENDER DOCK (ZERO INNER SCROLLBAR!) */
+              <div className="space-y-2">
+                {/* 1. Subtotal, Fast Discounts & Net Payable Banner */}
+                <div className="bg-slate-50 dark:bg-slate-750/80 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      Subtotal: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatPaisa(subtotalPaisa)}</strong>
                     </span>
-                  </div>
 
-                  {/* Quick Discount Selector */}
-                  <div className="space-y-1.5 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                    <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
-                      <span className="flex items-center gap-1">
-                        <span>Discount</span>
-                        {discountPaisa > 0n && (
-                          <span className="text-[10px] text-rose-500 font-mono font-bold">
-                            (-{formatPaisa(discountPaisa)})
-                          </span>
-                        )}
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        placeholder="₹ 0"
-                        value={discountRupees}
-                        onChange={(e) => setDiscountRupees(e.target.value)}
-                        className="w-20 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-0.5 text-right font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-emerald-500"
-                      />
-                    </div>
-
-                    {/* Fast Discount Buttons */}
-                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                    {/* Quick Discount Selector */}
+                    <div className="flex items-center gap-1">
                       {[
                         { label: "None", val: "none" as const },
                         { label: "-₹5", val: "5" as const },
                         { label: "-₹10", val: "10" as const },
-                        { label: "-₹20", val: "20" as const },
                         { label: "-5%", val: "5pct" as const },
                         { label: "-10%", val: "10pct" as const },
                       ].map((chip) => (
@@ -1648,7 +1836,11 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           key={chip.val}
                           type="button"
                           onClick={() => applyQuickDiscount(chip.val)}
-                          className="px-2 py-0.5 rounded-md bg-white hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${
+                            (chip.val === "none" && !discountRupees) || (discountRupees && discountRupees === chip.val)
+                              ? "bg-slate-800 text-white dark:bg-white dark:text-slate-900 shadow-2xs"
+                              : "bg-white dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-650 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600"
+                          }`}
                         >
                           {chip.label}
                         </button>
@@ -1656,13 +1848,15 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     </div>
                   </div>
 
-                  {/* Payable Grand Total */}
-                  <div className="flex items-center justify-between pt-1.5 border-t-2 border-slate-200 dark:border-slate-700">
-                    <div>
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white block">
-                        Payable Total
+                  {/* Net Payable Display Banner */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                        Net Payable:
                       </span>
-                      <span className="text-[9px] text-slate-400">Net bill amount</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        {cart.reduce((sum, ci) => sum + ci.quantity, 0)} items
+                      </span>
                     </div>
                     <span className="text-xl font-black font-mono tracking-tight text-emerald-600 dark:text-emerald-400">
                       {formatPaisa(payableTotalPaisa)}
@@ -1670,350 +1864,284 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   </div>
                 </div>
 
-                {/* Payment Method Selector (4 Tactile Tenders) */}
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                    <span>Payment Tender</span>
-                    <span className="text-[9px] font-mono font-normal">Active: {paymentMethod}</span>
-                  </label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {[
-                      { id: "CASH", label: "Cash", icon: <Wallet className="w-3.5 h-3.5" /> },
-                      { id: "UPI", label: "UPI QR", icon: <QrCode className="w-3.5 h-3.5" /> },
-                      { id: "KHATA", label: "Khata", icon: <Users className="w-3.5 h-3.5" /> },
-                      { id: "SPLIT", label: "Split", icon: <Layers className="w-3.5 h-3.5" /> },
-                    ].map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                        className={`p-2 rounded-xl text-center flex flex-col items-center gap-1 transition-all cursor-pointer ${
-                          paymentMethod === m.id
-                            ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold shadow-sm shadow-emerald-600/25 scale-[1.02]"
-                            : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-300 font-bold"
-                        }`}
-                      >
-                        {m.icon}
-                        <span className="text-[10px] font-bold">{m.label}</span>
-                      </button>
-                    ))}
-                  </div>
+                {/* 2. Tender Selection Pills (4 Buttons) */}
+                <div className="grid grid-cols-4 gap-1">
+                  {[
+                    { id: "CASH", label: "Cash", icon: <Wallet className="w-3.5 h-3.5" /> },
+                    { id: "UPI", label: "UPI QR", icon: <QrCode className="w-3.5 h-3.5" /> },
+                    { id: "KHATA", label: "Khata", icon: <Users className="w-3.5 h-3.5" /> },
+                    { id: "SPLIT", label: "Split", icon: <Layers className="w-3.5 h-3.5" /> },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setPaymentMethod(m.id as PaymentMethod)}
+                      className={`py-1.5 px-1 rounded-xl text-center flex flex-col items-center gap-0.5 transition-all cursor-pointer ${
+                        paymentMethod === m.id
+                          ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold shadow-sm shadow-emerald-600/30 scale-[1.02]"
+                          : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-750 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold border border-slate-200/60 dark:border-slate-700"
+                      }`}
+                    >
+                      {m.icon}
+                      <span className="text-[10px] font-bold">{m.label}</span>
+                    </button>
+                  ))}
+                </div>
 
-                  {/* If CASH Tender */}
-                  {paymentMethod === "CASH" && (
-                    <div className="bg-gradient-to-br from-emerald-50/80 to-teal-50/30 dark:from-emerald-950/40 dark:to-slate-800 border-2 border-emerald-300/80 dark:border-emerald-700/60 p-3 rounded-2xl space-y-2.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-extrabold text-emerald-950 dark:text-emerald-200">
-                          💵 Cash Received (₹):
-                        </span>
+                {/* 3. Tender Input Fields (Compact, No Scrollbars!) */}
+                {/* If CASH Tender */}
+                {paymentMethod === "CASH" && (
+                  <div className="bg-gradient-to-br from-emerald-50/80 to-teal-50/30 dark:from-emerald-950/40 dark:to-slate-800 border-2 border-emerald-300/80 dark:border-emerald-700/60 p-2.5 rounded-xl space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1 text-emerald-950 dark:text-emerald-200 font-bold">
+                        <span>💵 Received (₹):</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
                         <input
                           type="number"
                           step="1"
                           placeholder="e.g. 500"
                           value={cashTendered}
                           onChange={(e) => setCashTendered(e.target.value)}
-                          className="w-28 bg-white dark:bg-slate-700 border-2 border-emerald-400 dark:border-emerald-600 rounded-xl px-2.5 py-1 text-right font-mono font-bold text-sm text-slate-900 dark:text-white focus:outline-emerald-500"
+                          className="w-24 bg-white dark:bg-slate-700 border border-emerald-400 dark:border-emerald-600 rounded-lg px-2 py-0.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
                         />
                       </div>
+                    </div>
 
-                      {/* Instant Denomination Chips */}
-                      <div className="flex items-center justify-between gap-1 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60">
-                        <span className="text-[9px] font-extrabold text-emerald-800 dark:text-emerald-300 uppercase">
-                          Quick:
-                        </span>
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {cashDenominations.map((denom) => (
-                            <button
-                              key={denom}
-                              type="button"
-                              onClick={() => setCashTendered(denom.toString())}
-                              className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition cursor-pointer ${
-                                cashTendered === denom.toString()
-                                  ? "bg-emerald-600 text-white shadow-2xs"
-                                  : "bg-white dark:bg-slate-700 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-600 hover:bg-emerald-100"
-                              }`}
-                            >
-                              ₹{denom}
-                            </button>
-                          ))}
-                        </div>
+                    <div className="flex items-center justify-between gap-1 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                      <span className="text-[9px] font-extrabold text-emerald-800 dark:text-emerald-300 uppercase">
+                        Quick:
+                      </span>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {cashDenominations.map((denom) => (
+                          <button
+                            key={denom}
+                            type="button"
+                            onClick={() => setCashTendered(denom.toString())}
+                            className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold transition cursor-pointer ${
+                              cashTendered === denom.toString()
+                                ? "bg-emerald-600 text-white shadow-2xs"
+                                : "bg-white dark:bg-slate-700 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-600 hover:bg-emerald-100"
+                            }`}
+                          >
+                            ₹{denom}
+                          </button>
+                        ))}
                       </div>
+                    </div>
 
-                      {/* Change to Return Pill */}
-                      {cashTenderedPaisa > 0n && (
-                        <div className="flex items-center justify-between p-2 rounded-xl bg-white/90 dark:bg-slate-700/80 border border-emerald-200 dark:border-emerald-700 text-xs font-black">
-                          <span className="text-emerald-900 dark:text-emerald-300">
-                            Change to Return:
+                    {cashTenderedPaisa > 0n && (
+                      <div className="flex items-center justify-between p-1.5 rounded-lg bg-white/90 dark:bg-slate-700/80 border border-emerald-200 dark:border-emerald-700 text-xs font-black">
+                        <span className="text-emerald-900 dark:text-emerald-300 text-[11px]">
+                          Change to Return:
+                        </span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-mono text-sm">
+                          {formatPaisa(cashChangeToReturnPaisa)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* If UPI QR Tender */}
+                {paymentMethod === "UPI" && (
+                  <div className="bg-gradient-to-br from-purple-50/80 to-violet-50/30 dark:from-purple-950/40 dark:to-slate-800 border-2 border-purple-300/80 dark:border-purple-700/60 p-2.5 rounded-xl space-y-1.5 text-center">
+                    <div className="flex items-center justify-between border-b border-purple-200/60 dark:border-purple-800/60 pb-1">
+                      <span className="font-extrabold text-xs text-purple-950 dark:text-purple-200 flex items-center gap-1">
+                        <QrCode className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        Scan UPI QR
+                      </span>
+                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.2 rounded-full">
+                        {formatPaisa(payableTotalPaisa)}
+                      </span>
+                    </div>
+
+                    <div className="p-1.5 bg-white rounded-xl border border-purple-200 inline-block shadow-2xs mx-auto">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=95x95&margin=2&data=${encodeURIComponent(
+                          `upi://pay?pa=sarkarcommunication@sbi&pn=Sarkar+Communication&am=${(Number(payableTotalPaisa) / 100).toFixed(2)}&cu=INR`
+                        )}`}
+                        alt="Scan UPI QR"
+                        className="w-20 h-20 mx-auto rounded-lg"
+                      />
+                      <span className="text-[8px] font-mono text-slate-500 block mt-0.5">
+                        sarkarcommunication@sbi
+                      </span>
+                    </div>
+
+                    <p className="text-[9px] font-bold text-purple-900 dark:text-purple-200">
+                      GPay • PhonePe • Paytm • BHIM
+                    </p>
+                  </div>
+                )}
+
+                {/* If pure KHATA Tender */}
+                {paymentMethod === "KHATA" && (
+                  <div className="bg-gradient-to-br from-rose-50/80 to-pink-50/30 dark:from-rose-950/40 dark:to-slate-800 border-2 border-rose-300/80 dark:border-rose-800/60 p-2.5 rounded-xl space-y-1 text-xs">
+                    <div className="flex items-center justify-between font-bold text-rose-900 dark:text-rose-300">
+                      <span className="flex items-center gap-1.5 font-extrabold text-[11px]">
+                        <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                        Khata Udhaar:
+                      </span>
+                      <span className="font-mono text-xs font-black">{formatPaisa(payableTotalPaisa)}</span>
+                    </div>
+                    <p className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold truncate">
+                      📌 Posting to Customer Ledger for{" "}
+                      <strong className="underline">
+                        {customerName.trim() && customerName.trim() !== "Walk-in Customer"
+                          ? customerName
+                          : "⚠️ Customer Name"}
+                      </strong>
+                    </p>
+                  </div>
+                )}
+
+                {/* If SPLIT Tender */}
+                {paymentMethod === "SPLIT" && (
+                  <div className="bg-gradient-to-br from-indigo-50/60 via-purple-50/30 to-slate-50 dark:from-slate-800 dark:to-indigo-950/30 border-2 border-indigo-200/90 dark:border-indigo-800/70 p-2.5 rounded-xl space-y-1.5 text-xs">
+                    {/* Split Mode Selector Tabs */}
+                    <div className="grid grid-cols-4 gap-1 p-0.5 bg-white dark:bg-slate-700/80 rounded-lg border border-indigo-100 dark:border-slate-600">
+                      {[
+                        { id: "CASH_UPI" as const, label: "💵+📱 Cash&UPI" },
+                        { id: "CASH_KHATA" as const, label: "💵+👥 Cash&Khata" },
+                        { id: "UPI_KHATA" as const, label: "📱+👥 UPI&Khata" },
+                        { id: "3WAY" as const, label: "✨ All 3" },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => handleSelectSplitMode(m.id)}
+                          className={`py-0.5 px-0.5 rounded text-[9px] font-bold transition text-center cursor-pointer ${
+                            splitMode === m.id
+                              ? "bg-indigo-600 text-white shadow-2xs"
+                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600"
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Compact Inputs */}
+                    <div className="space-y-1">
+                      {(splitMode === "CASH_UPI" || splitMode === "CASH_KHATA" || splitMode === "3WAY") && (
+                        <div className="flex items-center justify-between gap-1 p-1 rounded-lg bg-white/80 dark:bg-slate-700/60 border border-emerald-200 dark:border-emerald-800/60">
+                          <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
+                            💵 Cash:
                           </span>
-                          <span className="text-emerald-600 dark:text-emerald-400 font-mono text-sm">
-                            {formatPaisa(cashChangeToReturnPaisa)}
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const other = splitUpiPaisa + splitKhataPaisa;
+                                const rem = payableTotalPaisa - other;
+                                handleCashSplitChange(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
+                              }}
+                              className="px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[9px] font-bold"
+                            >
+                              Fill
+                            </button>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              placeholder="0"
+                              value={splitCashRupees}
+                              onChange={(e) => handleCashSplitChange(e.target.value)}
+                              className="w-20 bg-slate-50 dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded px-1.5 py-0.5 text-right font-mono font-bold text-xs"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {(splitMode === "CASH_UPI" || splitMode === "UPI_KHATA" || splitMode === "3WAY") && (
+                        <div className="flex items-center justify-between gap-1 p-1 rounded-lg bg-white/80 dark:bg-slate-700/60 border border-purple-200 dark:border-purple-800/60">
+                          <span className="text-[10px] font-bold text-purple-800 dark:text-purple-300">
+                            📱 UPI QR:
                           </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const other = splitCashPaisa + splitKhataPaisa;
+                                const rem = payableTotalPaisa - other;
+                                handleUpiSplitChange(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
+                              }}
+                              className="px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 text-[9px] font-bold"
+                            >
+                              Fill
+                            </button>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              placeholder="0"
+                              value={splitUpiRupees}
+                              onChange={(e) => handleUpiSplitChange(e.target.value)}
+                              className="w-20 bg-slate-50 dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded px-1.5 py-0.5 text-right font-mono font-bold text-xs"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {(splitMode === "CASH_KHATA" || splitMode === "UPI_KHATA" || splitMode === "3WAY") && (
+                        <div className="flex items-center justify-between gap-1 p-1 rounded-lg bg-white/80 dark:bg-slate-700/60 border border-rose-200 dark:border-rose-800/60">
+                          <span className="text-[10px] font-bold text-rose-800 dark:text-rose-300">
+                            👥 Khata:
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const other = splitCashPaisa + splitUpiPaisa;
+                                const rem = payableTotalPaisa - other;
+                                setSplitKhataRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
+                              }}
+                              className="px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 text-[9px] font-bold"
+                            >
+                              Fill
+                            </button>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              placeholder="0"
+                              value={splitKhataRupees}
+                              onChange={(e) => setSplitKhataRupees(e.target.value)}
+                              className="w-20 bg-slate-50 dark:bg-slate-800 border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-right font-mono font-bold text-xs"
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
-                  )}
 
-                  {/* If UPI QR Tender */}
-                  {paymentMethod === "UPI" && (
-                    <div className="bg-gradient-to-br from-purple-50/80 to-violet-50/30 dark:from-purple-950/40 dark:to-slate-800 border-2 border-purple-300/80 dark:border-purple-700/60 p-3 rounded-2xl space-y-2.5 text-center">
-                      <div className="flex items-center justify-between border-b border-purple-200/60 dark:border-purple-800/60 pb-1.5">
-                        <span className="font-extrabold text-xs text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
-                          <QrCode className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                          Dynamic Merchant QR
-                        </span>
-                        <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded-full">
-                          Exact: {formatPaisa(payableTotalPaisa)}
-                        </span>
+                    {/* Status check */}
+                    {payableTotalPaisa > 0n && splitRemainingPaisa === 0n && totalSplitAllocatedPaisa > 0n ? (
+                      <div className="p-1 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold flex items-center justify-between">
+                        <span>✓ Balanced ({formatPaisa(totalSplitAllocatedPaisa)})</span>
+                        <span>Ready</span>
                       </div>
-
-                      <div className="p-2 bg-white rounded-xl border border-purple-200 inline-block shadow-xs mx-auto">
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(
-                            `upi://pay?pa=sarkarcommunication@sbi&pn=Sarkar+Communication&am=${(Number(payableTotalPaisa) / 100).toFixed(2)}&cu=INR`
-                          )}`}
-                          alt="Scan UPI QR"
-                          className="w-28 h-28 mx-auto rounded-lg"
-                        />
-                        <span className="text-[8px] font-mono text-slate-500 block mt-1">
-                          sarkarcommunication@sbi
-                        </span>
+                    ) : splitRemainingPaisa > 0n ? (
+                      <div className="p-1 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 text-[10px] font-bold flex items-center justify-between">
+                        <span>Remaining: {formatPaisa(splitRemainingPaisa)}</span>
                       </div>
-
-                      <p className="text-[10px] font-bold text-purple-900 dark:text-purple-200">
-                        Customer scans with GPay • PhonePe • Paytm • BHIM
-                      </p>
-                    </div>
-                  )}
-
-                  {/* If Pure KHATA Tender */}
-                  {paymentMethod === "KHATA" && (
-                    <div className="bg-gradient-to-br from-rose-50/80 to-pink-50/30 dark:from-rose-950/40 dark:to-slate-800 border-2 border-rose-300/80 dark:border-rose-800/60 p-3 rounded-2xl space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between font-bold text-rose-900 dark:text-rose-300">
-                        <span className="flex items-center gap-1.5 font-extrabold">
-                          <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                          Khata Credit Sale (Udhaar):
-                        </span>
-                        <span className="font-mono text-sm font-black">{formatPaisa(payableTotalPaisa)}</span>
+                    ) : splitRemainingPaisa < 0n ? (
+                      <div className="p-1 rounded bg-rose-500/10 text-rose-800 dark:text-rose-300 text-[10px] font-bold flex items-center justify-between">
+                        <span>Exceeds by: {formatPaisa(-splitRemainingPaisa)}</span>
                       </div>
-                      <p className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">
-                        📌 Full bill will be posted to Customer Ledger for{" "}
-                        <strong className="underline">
-                          {customerName.trim() && customerName.trim() !== "Walk-in Customer"
-                            ? customerName
-                            : "⚠️ Customer Name (Enter above)"}
-                        </strong>
-                      </p>
-                    </div>
-                  )}
+                    ) : null}
+                  </div>
+                )}
 
-                  {/* If SPLIT: Selective Mode Split Tender */}
-                  {paymentMethod === "SPLIT" && (
-                    <div className="bg-gradient-to-br from-indigo-50/60 via-purple-50/30 to-slate-50 dark:from-slate-800 dark:to-indigo-950/30 border-2 border-indigo-200/90 dark:border-indigo-800/70 p-3 rounded-2xl space-y-2 text-xs">
-                      {/* Split Header & Mode Selector */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-[11px] text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                            <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                            Choose Split Mode:
-                          </span>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                            Total: <strong className="font-mono text-slate-900 dark:text-white">{formatPaisa(payableTotalPaisa)}</strong>
-                          </span>
-                        </div>
-
-                        {/* 4 Segmented Split Mode Selector Buttons */}
-                        <div className="grid grid-cols-4 gap-1 p-1 bg-white dark:bg-slate-700/80 rounded-xl border border-indigo-100 dark:border-slate-600">
-                          {[
-                            { id: "CASH_UPI" as const, label: "💵+📱 Cash & UPI" },
-                            { id: "CASH_KHATA" as const, label: "💵+👥 Cash & Khata" },
-                            { id: "UPI_KHATA" as const, label: "📱+👥 UPI & Khata" },
-                            { id: "3WAY" as const, label: "✨ All 3" },
-                          ].map((m) => (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => handleSelectSplitMode(m.id)}
-                              className={`py-1 px-1 rounded-lg text-[10px] font-bold transition text-center cursor-pointer ${
-                                splitMode === m.id
-                                  ? "bg-indigo-600 text-white shadow-xs"
-                                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600"
-                              }`}
-                            >
-                              {m.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Visual Allocation Segmented Progress Bar */}
-                      <div className="space-y-1">
-                        <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
-                          {splitCashPaisa > 0n && (
-                            <div style={{ width: `${splitPcts.cash}%` }} className="bg-emerald-500 transition-all duration-300" title={`Cash: ${splitPcts.cash}%`} />
-                          )}
-                          {splitUpiPaisa > 0n && (
-                            <div style={{ width: `${splitPcts.upi}%` }} className="bg-purple-500 transition-all duration-300" title={`UPI QR: ${splitPcts.upi}%`} />
-                          )}
-                          {splitKhataPaisa > 0n && (
-                            <div style={{ width: `${splitPcts.khata}%` }} className="bg-rose-500 transition-all duration-300" title={`Khata: ${splitPcts.khata}%`} />
-                          )}
-                          {splitPcts.remaining > 0 && (
-                            <div style={{ width: `${splitPcts.remaining}%` }} className="bg-amber-400/60 dark:bg-amber-500/40 animate-pulse" title={`Unallocated: ${splitPcts.remaining}%`} />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* ONLY SHOW INPUTS RELEVANT TO ACTIVE SPLIT MODE */}
-                      <div className="space-y-1.5">
-                        {/* 1. Cash Input (Shown if CASH_UPI, CASH_KHATA, or 3WAY) */}
-                        {(splitMode === "CASH_UPI" || splitMode === "CASH_KHATA" || splitMode === "3WAY") && (
-                          <div className="flex items-center justify-between gap-2 p-1.5 rounded-xl bg-white/80 dark:bg-slate-700/60 border border-emerald-200 dark:border-emerald-800/60">
-                            <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-bold shrink-0">
-                              <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                              <span>💵 Cash (₹):</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const otherPaisa = splitUpiPaisa + splitKhataPaisa;
-                                  const rem = payableTotalPaisa - otherPaisa;
-                                  const autoVal = rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0";
-                                  handleCashSplitChange(autoVal);
-                                }}
-                                className="px-2 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-850 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold cursor-pointer transition"
-                                title="Auto-fill remaining balance to Cash"
-                              >
-                                Fill
-                              </button>
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                placeholder="0"
-                                value={splitCashRupees}
-                                onChange={(e) => handleCashSplitChange(e.target.value)}
-                                className="w-24 bg-slate-50 dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg px-2 py-0.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 2. UPI QR Input (Shown if CASH_UPI, UPI_KHATA, or 3WAY) */}
-                        {(splitMode === "CASH_UPI" || splitMode === "UPI_KHATA" || splitMode === "3WAY") && (
-                          <div className="flex items-center justify-between gap-2 p-1.5 rounded-xl bg-white/80 dark:bg-slate-700/60 border border-purple-200 dark:border-purple-800/60">
-                            <div className="flex items-center gap-1.5 text-purple-800 dark:text-purple-300 font-bold shrink-0">
-                              <QrCode className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                              <span>📱 UPI QR (₹):</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const otherPaisa = splitCashPaisa + splitKhataPaisa;
-                                  const rem = payableTotalPaisa - otherPaisa;
-                                  const autoVal = rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0";
-                                  handleUpiSplitChange(autoVal);
-                                }}
-                                className="px-2 py-0.5 rounded-lg bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 dark:hover:bg-purple-850 text-purple-800 dark:text-purple-200 text-[10px] font-bold cursor-pointer transition"
-                                title="Auto-fill remaining balance to UPI QR"
-                              >
-                                Fill
-                              </button>
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                placeholder="0"
-                                value={splitUpiRupees}
-                                onChange={(e) => handleUpiSplitChange(e.target.value)}
-                                className="w-24 bg-slate-50 dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded-lg px-2 py-0.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-purple-500"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 3. Khata Udhaar Input (Shown if CASH_KHATA, UPI_KHATA, or 3WAY) */}
-                        {(splitMode === "CASH_KHATA" || splitMode === "UPI_KHATA" || splitMode === "3WAY") && (
-                          <div className="flex items-center justify-between gap-2 p-1.5 rounded-xl bg-white/80 dark:bg-slate-700/60 border border-rose-200 dark:border-rose-800/60">
-                            <div className="flex items-center gap-1.5 text-rose-800 dark:text-rose-300 font-bold shrink-0">
-                              <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                              <span>👥 Khata Udhaar (₹):</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const otherPaisa = splitCashPaisa + splitUpiPaisa;
-                                  const rem = payableTotalPaisa - otherPaisa;
-                                  setSplitKhataRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
-                                }}
-                                className="px-2 py-0.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/60 dark:hover:bg-rose-850 text-rose-800 dark:text-rose-200 text-[10px] font-bold cursor-pointer transition"
-                                title="Auto-fill remaining balance to Khata"
-                              >
-                                Fill
-                              </button>
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                placeholder="0"
-                                value={splitKhataRupees}
-                                onChange={(e) => setSplitKhataRupees(e.target.value)}
-                                className="w-24 bg-slate-50 dark:bg-slate-800 border border-rose-300 dark:border-rose-700 rounded-lg px-2 py-0.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-rose-500"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Status Bar / Balance Check */}
-                      <div className="pt-1.5 border-t border-indigo-100 dark:border-slate-700">
-                        {payableTotalPaisa > 0n && splitRemainingPaisa === 0n && totalSplitAllocatedPaisa > 0n ? (
-                          <div className="p-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold flex items-center justify-between">
-                            <span className="flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              Allocated Perfectly ({formatPaisa(totalSplitAllocatedPaisa)})
-                            </span>
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-300">✓ Ready</span>
-                          </div>
-                        ) : splitRemainingPaisa > 0n ? (
-                          <div className="p-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-bold flex items-center justify-between">
-                            <span>⚠️ Remaining to Allocate:</span>
-                            <span className="font-mono text-xs font-black">{formatPaisa(splitRemainingPaisa)}</span>
-                          </div>
-                        ) : splitRemainingPaisa < 0n ? (
-                          <div className="p-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-300 text-[10px] font-bold flex items-center justify-between">
-                            <span>❌ Exceeds Bill by:</span>
-                            <span className="font-mono text-xs font-black">{formatPaisa(-splitRemainingPaisa)}</span>
-                          </div>
-                        ) : null}
-
-                        {/* Customer warning if Khata > 0 */}
-                        {splitKhataPaisa > 0n && (
-                          <div className="mt-1 text-[10px] text-rose-700 dark:text-rose-400 font-semibold flex items-center gap-1">
-                            <span>📌 {formatPaisa(splitKhataPaisa)} will be booked to</span>
-                            <span className="underline font-bold">
-                              {customerName.trim() && customerName.trim() !== "Walk-in Customer"
-                                ? customerName
-                                : "⚠️ Customer Name (Enter above)"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Complete & Tender Sale Primary Button */}
+                {/* 4. Complete & Tender Primary Button */}
                 <button
                   type="button"
                   disabled={cart.length === 0 || (paymentMethod === "SPLIT" && splitRemainingPaisa !== 0n)}
                   onClick={handleCompleteSale}
-                  className={`w-full py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer ${
+                  className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer ${
                     cart.length === 0 || (paymentMethod === "SPLIT" && splitRemainingPaisa !== 0n)
                       ? "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed shadow-none"
-                      : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30 hover:scale-[1.01] active:scale-[0.99]"
+                      : "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30 hover:scale-[1.01] active:scale-[0.99]"
                   }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -2022,12 +2150,132 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       ? `Allocate Full Bill (${formatPaisa(splitRemainingPaisa)} remaining)`
                       : `Complete & Tender Sale (${formatPaisa(payableTotalPaisa)})`}
                   </span>
+                  <span className="text-[9px] bg-white/20 px-1.5 py-0.2 rounded font-mono">F12</span>
                 </button>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* 2.5 MODAL: QUICK CUSTOM LINE ITEM */}
+      {isQuickChargeModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400">
+                  <Sparkles className="w-4 h-4" />
+                </span>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                  Quick Custom Charge
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickChargeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddQuickCharge} className="space-y-3">
+              {/* Presets Chips */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  Popular Quick Presets
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    "Print / Xerox",
+                    "Online Form / Admit Card",
+                    "Photo / Lamination",
+                    "Scan & Email",
+                    "PVC Smart Card",
+                    "Internet Browsing",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setQuickChargeName(preset)}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                        quickChargeName === preset
+                          ? "bg-indigo-600 text-white shadow-2xs"
+                          : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  Description / Service Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={quickChargeName}
+                  onChange={(e) => setQuickChargeName(e.target.value)}
+                  placeholder="e.g. Color Print 2 Pages"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                    Charge Amount (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    required
+                    autoFocus
+                    placeholder="₹ 15"
+                    value={quickChargePrice}
+                    onChange={(e) => setQuickChargePrice(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={quickChargeQty}
+                    onChange={(e) => setQuickChargeQty(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickChargeModalOpen(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 cursor-pointer"
+                >
+                  + Add to Active Bill
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ===================================================================== */}
       {/* 3. MODAL: ADD OR EDIT SERVICE / PRODUCT                               */}
