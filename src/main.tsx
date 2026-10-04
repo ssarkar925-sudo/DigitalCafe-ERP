@@ -31,24 +31,24 @@ class RootErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6 font-sans">
-          <div className="max-w-xl w-full bg-zinc-900 border border-rose-500/40 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6 font-sans">
+          <div className="max-w-xl w-full bg-slate-800 border border-rose-500/40 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
               <span className="text-3xl">⚠️</span>
               <div>
                 <h1 className="text-lg font-black text-rose-400 tracking-tight">
                   Sarkar Communication — Runtime Diagnostics
                 </h1>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-slate-400">
                   An unhandled error occurred while rendering the workspace terminal.
                 </p>
               </div>
             </div>
 
-            <div className="bg-black/60 rounded-xl p-4 border border-zinc-800 font-mono text-xs text-rose-300 overflow-x-auto">
+            <div className="bg-slate-950/60 rounded-xl p-4 border border-slate-700 font-mono text-xs text-rose-300 overflow-x-auto">
               <p className="font-bold">{this.state.error?.name}: {this.state.error?.message}</p>
               {this.state.errorInfo?.componentStack && (
-                <pre className="mt-2 text-[10px] text-zinc-500 whitespace-pre-wrap leading-relaxed">
+                <pre className="mt-2 text-[10px] text-slate-400 whitespace-pre-wrap leading-relaxed">
                   {this.state.errorInfo.componentStack}
                 </pre>
               )}

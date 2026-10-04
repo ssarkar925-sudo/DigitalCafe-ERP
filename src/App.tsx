@@ -229,7 +229,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 flex font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-slate-100/70 dark:bg-slate-900 text-slate-900 dark:text-slate-100 flex font-sans transition-colors duration-200">
       {/* ==================================================================== */}
       {/* 1. CLEAN SIDEBAR (With Dashboard tab, NO top Move Money button)       */}
       {/* ==================================================================== */}
@@ -275,10 +275,10 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 1 POS */}
         {activeTab === "pos" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
             <span className="text-4xl block mb-2">⚡</span>
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 1: Express Counter POS</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               Ready for Phase 4: Service tiles, PDF receipt downloads, thermal printing, and catalog manager.
             </p>
           </div>
@@ -286,10 +286,10 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 2 CSP */}
         {activeTab === "csp" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
             <span className="text-4xl block mb-2">🏧</span>
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 2: Biometric CSP Kiosk</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               AEPS, DMT, and UPI Cash Out with passbook statement calculations and 4 fee collection modes.
             </p>
           </div>
@@ -297,10 +297,10 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 3 BBPS */}
         {activeTab === "bbps" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
             <span className="text-4xl block mb-2">⚡</span>
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 3: Recharges, BBPS & Utility Hub</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               Mobile/DTH, WBSEDCL electricity bills, Fastag, and Google Play voucher record-keeping.
             </p>
           </div>
@@ -308,10 +308,10 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 4 KHATA & STOCK */}
         {activeTab === "khata_stock" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
             <span className="text-4xl block mb-2">👥</span>
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 4: Customer Khata & Consumables Stock</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               Customer udhaar credit ledger + wholesale consumables purchase & stock tracking.
             </p>
           </div>
@@ -319,10 +319,10 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 5 ACCOUNTS & CASHBOOK */}
         {activeTab === "accounts" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
             <span className="text-4xl block mb-2">🏦</span>
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 5: Cash Drawer & Accounts Hub</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               Daily Cash Book, physical note denomination counter, Section 194N tracker, and P&L.
             </p>
           </div>
@@ -330,10 +330,10 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 6 SETTINGS */}
         {activeTab === "settings" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
             <span className="text-4xl block mb-2">⚙️</span>
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 6: Settings & Backup</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               Shop profile, accounts manager, printer configurations, and local backup.
             </p>
           </div>
@@ -344,9 +344,9 @@ export function App() {
       {/* UNIVERSAL CONTRA MOVE MONEY MODAL                                    */}
       {/* ==================================================================== */}
       {isMoveOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-3">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
               <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <span>🔄</span> Universal Move Money (Contra)
               </h3>
@@ -361,13 +361,13 @@ export function App() {
 
             <form onSubmit={handleConfirmMoveMoney} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Source Account (FROM)
                 </label>
                 <select
                   value={moveFromId}
                   onChange={(e) => setMoveFromId(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 >
                   {accounts
                     .filter((a) => a.type !== "INCOME" && a.type !== "EXPENSE")
@@ -380,13 +380,13 @@ export function App() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Destination Account (TO)
                 </label>
                 <select
                   value={moveToId}
                   onChange={(e) => setMoveToId(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 >
                   {accounts
                     .filter((a) => a.type !== "INCOME" && a.type !== "EXPENSE")
@@ -399,7 +399,7 @@ export function App() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Transfer Amount (₹)
                 </label>
                 <input
@@ -409,12 +409,12 @@ export function App() {
                   placeholder="e.g. 5000"
                   value={moveAmount}
                   onChange={(e) => setMoveAmount(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Remarks / Note (Optional)
                 </label>
                 <input
@@ -422,7 +422,7 @@ export function App() {
                   placeholder="e.g. ATM cash withdrawal for drawer"
                   value={moveNote}
                   onChange={(e) => setMoveNote(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
@@ -430,13 +430,13 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setIsMoveOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 cursor-pointer"
                 >
                   Confirm Transfer
                 </button>
