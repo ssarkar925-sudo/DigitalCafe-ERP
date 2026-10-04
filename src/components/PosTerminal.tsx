@@ -124,8 +124,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   // Cash Tendered & Instant Change Calculator
   const [cashTendered, setCashTendered] = useState("");
 
-  // Split Payment Inputs
+  // Split Payment Inputs (Cash + UPI QR + Khata Udhaar)
   const [splitCashRupees, setSplitCashRupees] = useState("");
+  const [splitUpiRupees, setSplitUpiRupees] = useState("");
+  const [splitKhataRupees, setSplitKhataRupees] = useState("");
 
   // --- Held Orders State (Suspended Carts) ---
   const [heldOrders, setHeldOrders] = useState<HeldOrder[]>(() => {
@@ -261,6 +263,33 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     return 0n;
   }, [cashTenderedPaisa, payableTotalPaisa]);
 
+  // Split Calculations (Cash + UPI QR + Khata Udhaar)
+  const splitCashPaisa = useMemo(() => {
+    const num = parseFloat(splitCashRupees);
+    if (isNaN(num) || num <= 0) return 0n;
+    return BigInt(Math.round(num * 100));
+  }, [splitCashRupees]);
+
+  const splitUpiPaisa = useMemo(() => {
+    const num = parseFloat(splitUpiRupees);
+    if (isNaN(num) || num <= 0) return 0n;
+    return BigInt(Math.round(num * 100));
+  }, [splitUpiRupees]);
+
+  const splitKhataPaisa = useMemo(() => {
+    const num = parseFloat(splitKhataRupees);
+    if (isNaN(num) || num <= 0) return 0n;
+    return BigInt(Math.round(num * 100));
+  }, [splitKhataRupees]);
+
+  const totalSplitAllocatedPaisa = useMemo(() => {
+    return splitCashPaisa + splitUpiPaisa + splitKhataPaisa;
+  }, [splitCashPaisa, splitUpiPaisa, splitKhataPaisa]);
+
+  const splitRemainingPaisa = useMemo(() => {
+    return payableTotalPaisa - totalSplitAllocatedPaisa;
+  }, [payableTotalPaisa, totalSplitAllocatedPaisa]);
+
   // Add Item to Cart with multiplier
   const addToCart = (item: CatalogItem, qtyToAdd: number = 1) => {
     setCart((prev) => {
@@ -323,6 +352,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     setDiscountRupees("");
     setCashTendered("");
     setSplitCashRupees("");
+    setSplitUpiRupees("");
+    setSplitKhataRupees("");
   };
 
   // --- HOLD ORDER (SUSPEND CURRENT SALE) ---
@@ -431,6 +462,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       accountId?: string;
     }[] = [];
 
+    let finalCustomerName = customerName.trim() || "Walk-in Customer";
+
     if (paymentMethod === "CASH") {
       cashDeltaPaisa = payableTotalPaisa;
       allocations.push({ method: "CASH", amountPaisa: payableTotalPaisa, accountId: cashAcc.id });
@@ -438,15 +471,52 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       qrDeltaPaisa = payableTotalPaisa;
       allocations.push({ method: "UPI", amountPaisa: payableTotalPaisa, accountId: qrAcc.id });
     } else if (paymentMethod === "KHATA") {
+      if (finalCustomerName === "Walk-in Customer" || finalCustomerName === "") {
+        const entered = prompt(
+          `Khata (Udhaar) sale is ${formatPaisa(payableTotalPaisa)}.\nPlease enter Customer Name for Khata ledger:`
+        );
+        if (!entered || !entered.trim()) {
+          alert("Customer Name is required when recording Khata (Udhaar) sales.");
+          return;
+        }
+        finalCustomerName = entered.trim();
+        setCustomerName(finalCustomerName);
+      }
       khataDeltaPaisa = payableTotalPaisa;
       allocations.push({ method: "KHATA", amountPaisa: payableTotalPaisa });
     } else if (paymentMethod === "SPLIT") {
-      const splitCash = BigInt(Math.round((parseFloat(splitCashRupees) || 0) * 100));
-      const splitUpi = payableTotalPaisa - splitCash;
-      cashDeltaPaisa = splitCash;
-      qrDeltaPaisa = splitUpi > 0n ? splitUpi : 0n;
-      allocations.push({ method: "CASH", amountPaisa: cashDeltaPaisa, accountId: cashAcc.id });
-      allocations.push({ method: "UPI", amountPaisa: qrDeltaPaisa, accountId: qrAcc.id });
+      if (splitRemainingPaisa !== 0n) {
+        alert(
+          `Split allocations do not match total bill!\nBill Total: ${formatPaisa(payableTotalPaisa)}\nAllocated: ${formatPaisa(totalSplitAllocatedPaisa)}\nDifference: ${formatPaisa(splitRemainingPaisa)}`
+        );
+        return;
+      }
+
+      cashDeltaPaisa = splitCashPaisa;
+      qrDeltaPaisa = splitUpiPaisa;
+      khataDeltaPaisa = splitKhataPaisa;
+
+      if (khataDeltaPaisa > 0n && (finalCustomerName === "Walk-in Customer" || finalCustomerName === "")) {
+        const entered = prompt(
+          `Khata (Udhaar) portion is ${formatPaisa(khataDeltaPaisa)}.\nPlease enter Customer Name for Khata ledger:`
+        );
+        if (!entered || !entered.trim()) {
+          alert("Customer Name is required when allocating to Khata udhaar.");
+          return;
+        }
+        finalCustomerName = entered.trim();
+        setCustomerName(finalCustomerName);
+      }
+
+      if (cashDeltaPaisa > 0n) {
+        allocations.push({ method: "CASH", amountPaisa: cashDeltaPaisa, accountId: cashAcc.id });
+      }
+      if (qrDeltaPaisa > 0n) {
+        allocations.push({ method: "UPI", amountPaisa: qrDeltaPaisa, accountId: qrAcc.id });
+      }
+      if (khataDeltaPaisa > 0n) {
+        allocations.push({ method: "KHATA", amountPaisa: khataDeltaPaisa });
+      }
     }
 
     const newInvoice: InvoiceRecord = {
@@ -454,7 +524,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       invoiceNumber: invoiceNum,
       date: todayDate,
       time: timeStr,
-      customerName: customerName.trim() || "Walk-in Customer",
+      customerName: finalCustomerName,
       customerPhone: customerPhone.trim() || undefined,
       items: cart.map((c) => ({
         id: c.id,
@@ -574,10 +644,30 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     doc.text(formatPaisa(inv.totalPaisa), 74, y, { align: "right" });
     y += 5;
 
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Tender Mode: ${inv.paymentMethod}`, 6, y);
-    y += 6;
+    if (inv.paymentMethod === "SPLIT" && inv.allocations && inv.allocations.length > 0) {
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("Tender Mode: SPLIT BREAKDOWN", 6, y);
+      y += 4;
+      doc.setFont("helvetica", "normal");
+      inv.allocations.forEach((alloc) => {
+        const label =
+          alloc.method === "CASH"
+            ? "Cash Paid"
+            : alloc.method === "UPI"
+            ? "UPI QR Paid"
+            : "Khata (Udhaar Due)";
+        doc.text(`  • ${label}:`, 6, y);
+        doc.text(formatPaisa(alloc.amountPaisa), 74, y, { align: "right" });
+        y += 4;
+      });
+      y += 2;
+    } else {
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Tender Mode: ${inv.paymentMethod}`, 6, y);
+      y += 6;
+    }
 
     doc.text("Thank you for visiting Sarkar Communication!", 40, y, { align: "center" });
     y += 4;
@@ -664,6 +754,18 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             </tr>
           </table>
           <div style="margin-top: 4px;">Paid via: <span class="bold">${inv.paymentMethod}</span></div>
+          ${
+            inv.paymentMethod === "SPLIT" && inv.allocations && inv.allocations.length > 0
+              ? `<table>${inv.allocations
+                  .map(
+                    (a) => `<tr>
+                      <td>• ${a.method === "CASH" ? "Cash Paid" : a.method === "UPI" ? "UPI QR Paid" : "Khata (Udhaar Due)"}</td>
+                      <td class="right bold">${formatPaisa(a.amountPaisa)}</td>
+                    </tr>`
+                  )
+                  .join("")}</table>`
+              : ""
+          }
           <div class="divider"></div>
           <div class="center" style="font-size: 10px;">Thank You! Visit Again</div>
           <div class="center" style="font-size: 9px;">Sarkar Communication Counter</div>
@@ -682,6 +784,17 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const handleWhatsAppDispatch = (inv: InvoiceRecord) => {
     const phone = inv.customerPhone?.replace(/[^0-9]/g, "") || "";
     const itemsList = inv.items.map((i) => `• ${i.name} x${i.quantity} = ${formatPaisa(i.totalPaisa)}`).join("\n");
+    let paymentText = `*Payment:* Paid via ${inv.paymentMethod} ✅`;
+    if (inv.paymentMethod === "SPLIT" && inv.allocations && inv.allocations.length > 0) {
+      const breakdown = inv.allocations
+        .map(
+          (a) =>
+            `  • ${a.method === "CASH" ? "Cash Paid" : a.method === "UPI" ? "UPI QR Paid" : "Khata Udhaar Due"}: ${formatPaisa(a.amountPaisa)}`
+        )
+        .join("\n");
+      paymentText = `*Payment:* Split Tender Breakdown:\n${breakdown}`;
+    }
+
     const msg = `🧾 *SARKAR COMMUNICATION RECEIPT*\n` +
       `--------------------------------\n` +
       `*Invoice:* ${inv.invoiceNumber}\n` +
@@ -690,7 +803,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       `*Items:*\n${itemsList}\n` +
       `--------------------------------\n` +
       `*Grand Total:* ${formatPaisa(inv.totalPaisa)}\n` +
-      `*Payment:* Paid via ${inv.paymentMethod} ✅\n\n` +
+      `${paymentText}\n\n` +
       `Thank you for visiting Sarkar Communication! 🙏`;
 
     const encoded = encodeURIComponent(msg);
@@ -1250,30 +1363,163 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               </div>
             )}
 
-            {/* If SPLIT: Cash + UPI Breakdown */}
-            {paymentMethod === "SPLIT" && (
-              <div className="bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 p-3 rounded-xl space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-600 dark:text-slate-300">
-                    Cash Portion (₹):
+            {/* If pure KHATA Tender: Show notification */}
+            {paymentMethod === "KHATA" && (
+              <div className="bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 p-3 rounded-xl space-y-1.5 text-xs">
+                <div className="flex items-center justify-between font-bold text-rose-900 dark:text-rose-300">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                    Khata Credit Sale (Udhaar):
                   </span>
-                  <input
-                    type="number"
-                    step="1"
-                    placeholder="e.g. 50"
-                    value={splitCashRupees}
-                    onChange={(e) => setSplitCashRupees(e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs"
-                  />
+                  <span className="font-mono text-sm">{formatPaisa(payableTotalPaisa)}</span>
                 </div>
-                <div className="flex items-center justify-between text-slate-500">
-                  <span>UPI Remaining:</span>
-                  <span className="font-mono font-bold text-slate-900 dark:text-white">
-                    {formatPaisa(
-                      payableTotalPaisa -
-                        BigInt(Math.round((parseFloat(splitCashRupees) || 0) * 100))
-                    )}
+                <p className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">
+                  📌 Full amount will be added to Customer Due ledger for{" "}
+                  <strong className="underline">
+                    {customerName.trim() && customerName.trim() !== "Walk-in Customer"
+                      ? customerName
+                      : "Customer Name (Enter above)"}
+                  </strong>
+                </p>
+              </div>
+            )}
+
+            {/* If SPLIT: 3-Way Cash + UPI QR + Khata Udhaar Breakdown */}
+            {paymentMethod === "SPLIT" && (
+              <div className="bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-800/80 dark:to-slate-800/50 border border-indigo-200/80 dark:border-indigo-800/60 p-3 rounded-xl space-y-2.5 text-xs">
+                <div className="flex items-center justify-between border-b border-indigo-100 dark:border-slate-700 pb-1.5">
+                  <span className="font-extrabold text-[11px] text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    3-Way Split Tender Breakdown
                   </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Bill Total: <strong className="font-mono text-slate-900 dark:text-white">{formatPaisa(payableTotalPaisa)}</strong>
+                  </span>
+                </div>
+
+                {/* 1. Cash Tender */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-bold shrink-0">
+                    <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>💵 Cash Paid (₹):</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rem = payableTotalPaisa - (splitUpiPaisa + splitKhataPaisa);
+                        setSplitCashRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-850 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold cursor-pointer transition"
+                      title="Auto-fill remaining balance to Cash"
+                    >
+                      Fill
+                    </button>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0"
+                      value={splitCashRupees}
+                      onChange={(e) => setSplitCashRupees(e.target.value)}
+                      className="w-24 bg-white dark:bg-slate-700 border border-emerald-300 dark:border-emerald-700 rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. UPI QR Tender */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-purple-800 dark:text-purple-300 font-bold shrink-0">
+                    <QrCode className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>📱 UPI QR Paid (₹):</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rem = payableTotalPaisa - (splitCashPaisa + splitKhataPaisa);
+                        setSplitUpiRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 dark:hover:bg-purple-850 text-purple-800 dark:text-purple-200 text-[10px] font-bold cursor-pointer transition"
+                      title="Auto-fill remaining balance to UPI QR"
+                    >
+                      Fill
+                    </button>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0"
+                      value={splitUpiRupees}
+                      onChange={(e) => setSplitUpiRupees(e.target.value)}
+                      className="w-24 bg-white dark:bg-slate-700 border border-purple-300 dark:border-purple-700 rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Khata (Udhaar) Tender */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-rose-800 dark:text-rose-300 font-bold shrink-0">
+                    <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                    <span>👥 Khata Udhaar (₹):</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rem = payableTotalPaisa - (splitCashPaisa + splitUpiPaisa);
+                        setSplitKhataRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/60 dark:hover:bg-rose-850 text-rose-800 dark:text-rose-200 text-[10px] font-bold cursor-pointer transition"
+                      title="Auto-fill remaining balance to Khata"
+                    >
+                      Fill
+                    </button>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0"
+                      value={splitKhataRupees}
+                      onChange={(e) => setSplitKhataRupees(e.target.value)}
+                      className="w-24 bg-white dark:bg-slate-700 border border-rose-300 dark:border-rose-700 rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-rose-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Status Bar / Balance Check */}
+                <div className="pt-2 border-t border-indigo-100 dark:border-slate-700">
+                  {splitRemainingPaisa === 0n && totalSplitAllocatedPaisa > 0n ? (
+                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Allocated Perfectly ({formatPaisa(totalSplitAllocatedPaisa)})
+                      </span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-300">✓ Ready to tender</span>
+                    </div>
+                  ) : splitRemainingPaisa > 0n ? (
+                    <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] font-bold flex items-center justify-between">
+                      <span>⚠️ Unallocated Remaining:</span>
+                      <span className="font-mono text-xs font-black">{formatPaisa(splitRemainingPaisa)}</span>
+                    </div>
+                  ) : (
+                    <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-300 text-[11px] font-bold flex items-center justify-between">
+                      <span>❌ Exceeds Bill by:</span>
+                      <span className="font-mono text-xs font-black">{formatPaisa(-splitRemainingPaisa)}</span>
+                    </div>
+                  )}
+
+                  {/* Customer warning if Khata > 0 */}
+                  {splitKhataPaisa > 0n && (
+                    <div className="mt-1.5 text-[10px] text-rose-700 dark:text-rose-400 font-semibold flex items-center gap-1">
+                      <span>📌 {formatPaisa(splitKhataPaisa)} will be booked to</span>
+                      <span className="underline font-bold">
+                        {customerName.trim() && customerName.trim() !== "Walk-in Customer"
+                          ? customerName
+                          : "⚠️ Customer Name (Enter above)"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1282,16 +1528,20 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           {/* Complete Sale Button */}
           <button
             type="button"
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || (paymentMethod === "SPLIT" && splitRemainingPaisa !== 0n)}
             onClick={handleCompleteSale}
             className={`w-full py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition ${
-              cart.length === 0
+              cart.length === 0 || (paymentMethod === "SPLIT" && splitRemainingPaisa !== 0n)
                 ? "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed"
                 : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30 cursor-pointer"
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Complete & Tender Sale ({formatPaisa(payableTotalPaisa)})</span>
+            <span>
+              {paymentMethod === "SPLIT" && splitRemainingPaisa !== 0n
+                ? `Allocate Full Bill (${formatPaisa(splitRemainingPaisa)} remaining)`
+                : `Complete & Tender Sale (${formatPaisa(payableTotalPaisa)})`}
+            </span>
           </button>
         </div>
       </div>
@@ -1689,6 +1939,24 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Invoice <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{completedInvoice.invoiceNumber}</span> • {completedInvoice.paymentMethod}
               </p>
+              {completedInvoice.allocations && completedInvoice.allocations.length > 0 && completedInvoice.paymentMethod === "SPLIT" && (
+                <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
+                  {completedInvoice.allocations.map((a, i) => (
+                    <span
+                      key={i}
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                        a.method === "CASH"
+                          ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                          : a.method === "UPI"
+                          ? "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800"
+                          : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800"
+                      }`}
+                    >
+                      {a.method === "CASH" ? "💵 Cash" : a.method === "UPI" ? "📱 UPI QR" : "👥 Khata"}: {formatPaisa(a.amountPaisa)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 3 One-Click Output Actions */}
