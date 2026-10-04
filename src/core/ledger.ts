@@ -611,8 +611,8 @@ export function createPosSaleJournal(params: {
     accountId: salesRevenueAccount.id,
     accountName: salesRevenueAccount.name,
     accountType: salesRevenueAccount.type,
-    debitPaisa: totalPaisa,
-    creditPaisa: 0n,
+    debitPaisa: 0n,
+    creditPaisa: totalPaisa,
     narration: `Counter POS Sales Revenue #${invoiceNumber}`,
   });
 
