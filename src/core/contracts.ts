@@ -147,7 +147,19 @@ export interface CashBookEntry {
   type: "IN" | "OUT";
   amountPaisa: bigint;
   runningBalancePaisa: bigint;
-  category: "POS_SALE" | "AEPS_PAYOUT" | "AEPS_FEE" | "DMT_CASH_IN" | "UPI_CASHOUT_PAYOUT" | "EXPENSE" | "CONTRA_TRANSFER" | "KHATA_PAYMENT" | "VOID_REVERSAL";
+  category:
+    | "POS_SALE"
+    | "AEPS_PAYOUT"
+    | "AEPS_FEE"
+    | "DMT_CASH_IN"
+    | "UPI_CASHOUT_PAYOUT"
+    | "EXPENSE"
+    | "CONTRA_TRANSFER"
+    | "KHATA_PAYMENT"
+    | "VOID_REVERSAL"
+    | "UTILITY_BILL_CASH"
+    | "RECHARGE_CASH"
+    | "GAMING_CASH";
   referenceId?: string;
 }
 

@@ -23,6 +23,7 @@ import { DashboardOverview } from "./components/DashboardOverview";
 import { PosTerminal } from "./components/PosTerminal";
 import { AccountManagerModal } from "./components/AccountManagerModal";
 import { CspKiosk } from "./components/CspKiosk";
+import { BbpsRechargeHub } from "./components/BbpsRechargeHub";
 import { ArrowLeftRight, Landmark } from "lucide-react";
 
 export type NavTab = "dashboard" | "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
@@ -710,6 +711,12 @@ export function App() {
               ? "AEPS_PAYOUT"
               : transaction.serviceType === "DMT"
               ? "DMT_CASH_IN"
+              : transaction.serviceType === "UTILITY_BILL"
+              ? "UTILITY_BILL_CASH"
+              : transaction.serviceType === "RECHARGE"
+              ? "RECHARGE_CASH"
+              : transaction.serviceType === "GOOGLE_PLAY" || transaction.serviceType === "FASTAG"
+              ? "GAMING_CASH"
               : "UPI_CASHOUT_PAYOUT",
           referenceId: transaction.id,
         },
@@ -814,6 +821,26 @@ export function App() {
             : txn.amountPaisa;
         cashReversalPaisa = cashHanded;
         sourceReversalPaisa = -txn.amountPaisa;
+      }
+    } else if (
+      txn.serviceType === "UTILITY_BILL" ||
+      txn.serviceType === "RECHARGE" ||
+      txn.serviceType === "FASTAG" ||
+      txn.serviceType === "GOOGLE_PLAY"
+    ) {
+      const outwardPaid =
+        txn.amountPaisa >= txn.portalCommissionPaisa
+          ? txn.amountPaisa - txn.portalCommissionPaisa
+          : txn.amountPaisa;
+      sourceReversalPaisa = outwardPaid;
+
+      const totalCollected = txn.amountPaisa + txn.customerFeePaisa;
+      if (txn.feeCollectionMode === "SEPARATE_CASH" || txn.feeCollectionMode === "CUT_FROM_CASH") {
+        cashReversalPaisa = -totalCollected;
+      } else if (txn.feeCollectionMode === "UPI_QR") {
+        qrReversalPaisa = -totalCollected;
+      } else if (txn.feeCollectionMode === "KHATA") {
+        khataReversalPaisa = -totalCollected;
       }
     }
 
@@ -1023,13 +1050,15 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 3 BBPS */}
         {activeTab === "bbps" && (
-          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">⚡</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 3: Recharges, BBPS & Utility Hub</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-              Mobile/DTH, WBSEDCL electricity bills, Fastag, and Google Play voucher record-keeping.
-            </p>
-          </div>
+          <BbpsRechargeHub
+            accounts={accounts}
+            customers={customers}
+            timeStr={timeStr}
+            onRecordDigitalTransaction={handleRecordDigitalTransaction}
+            onVoidDigitalTransaction={handleVoidDigitalTransaction}
+            onAddAccount={handleAddAccount}
+            onOpenAccountManager={() => setIsAccountManagerOpen(true)}
+          />
         )}
 
         {/* WORKSPACE VIEW: MODULE 4 KHATA & STOCK */}
