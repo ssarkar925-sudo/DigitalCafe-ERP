@@ -397,7 +397,11 @@ export function App() {
       {/* ==================================================================== */}
       {/* 2. MAIN APPLICATION WORKSPACE AREA (NO TOPBAR, PURE CONTENT)         */}
       {/* ==================================================================== */}
-      <main className="flex-1 min-w-0 h-screen overflow-y-auto p-6 transition-colors">
+      <main
+        className={`flex-1 min-w-0 transition-colors ${
+          activeTab === "pos" ? "h-screen overflow-hidden p-4 flex flex-col" : "h-screen overflow-y-auto p-6"
+        }`}
+      >
         {/* TOAST NOTICE */}
         {toastNotice && (
           <div className="mb-4 bg-emerald-600 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-150 flex items-center justify-between">
