@@ -1,13 +1,13 @@
 import React from "react";
 import { NavTab } from "../App";
 import {
+  LayoutDashboard,
   Zap,
   Landmark,
   Smartphone,
   Users,
   Wallet,
   Settings,
-  ArrowLeftRight,
   Sun,
   Moon,
   CircleDot,
@@ -19,7 +19,6 @@ interface SidebarProps {
   isDark: boolean;
   onToggleTheme: () => void;
   isCloudSynced: boolean;
-  onOpenMoveMoney: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -28,19 +27,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isDark,
   onToggleTheme,
   isCloudSynced,
-  onOpenMoveMoney,
 }) => {
-  const navItems: { id: NavTab; label: string; icon: React.ReactNode; hotkey: string }[] = [
+  const navItems: { id: NavTab; label: string; icon: React.ReactNode; hotkey?: string }[] = [
+    { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4 text-emerald-500" />, hotkey: "Esc" },
     { id: "pos", label: "Express POS", icon: <Zap className="w-4 h-4 text-emerald-500" />, hotkey: "F1" },
     { id: "csp", label: "Biometric CSP", icon: <Landmark className="w-4 h-4 text-sky-500" />, hotkey: "F2" },
     { id: "bbps", label: "Recharges & BBPS", icon: <Smartphone className="w-4 h-4 text-indigo-500" />, hotkey: "F3" },
     { id: "khata_stock", label: "Khata & Stock", icon: <Users className="w-4 h-4 text-purple-500" />, hotkey: "F4" },
-    { id: "accounts", label: "Accounts & CashBook", icon: <Wallet className="w-4 h-4 text-amber-500" />, hotkey: "F5" },
-    { id: "settings", label: "Settings", icon: <Settings className="w-4 h-4 text-slate-400" />, hotkey: "" },
+    { id: "accounts", label: "CashBook & Accounts", icon: <Wallet className="w-4 h-4 text-amber-500" />, hotkey: "F5" },
+    { id: "settings", label: "Settings", icon: <Settings className="w-4 h-4 text-slate-400" /> },
   ];
 
   return (
-    <aside className="w-64 shrink-0 bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 flex flex-col h-screen border-r border-slate-200/80 dark:border-zinc-800/80 select-none sticky top-0 z-30 transition-colors">
+    <aside className="w-64 shrink-0 bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 flex flex-col h-screen border-r border-slate-200/80 dark:border-zinc-850 select-none sticky top-0 z-30 transition-colors">
       {/* 1. BRAND HEADER */}
       <div className="p-5 border-b border-slate-100 dark:border-zinc-900">
         <div className="flex items-center gap-3">
@@ -58,27 +57,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* 2. RAPID TRANSFER BUTTON */}
-      <div className="px-4 pt-4 pb-2">
-        <button
-          type="button"
-          onClick={onOpenMoveMoney}
-          className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white font-bold text-xs flex items-center justify-between shadow-xs transition cursor-pointer"
-        >
-          <div className="flex items-center gap-2">
-            <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Move Money</span>
-          </div>
-          <kbd className="bg-slate-800 dark:bg-zinc-900 text-slate-300 dark:text-zinc-400 text-[10px] px-1.5 py-0.5 rounded font-mono">
-            F6
-          </kbd>
-        </button>
-      </div>
-
-      {/* 3. CLEAN NAVIGATION ITEMS (NO SCROLLING, SPACIOUS & PREMIUM) */}
-      <nav className="flex-1 px-3 py-2 space-y-1">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-3 py-1.5">
-          Terminal Menu
+      {/* 2. NAVIGATION MENU (CLEAN, PROPORTIONAL, ZERO OVERFLOW) */}
+      <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-3 py-1">
+          Menu
         </p>
 
         {navItems.map((item) => {
@@ -88,14 +70,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               key={item.id}
               type="button"
               onClick={() => onSelectTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 isActive
-                  ? "bg-slate-100 dark:bg-zinc-800/90 text-slate-900 dark:text-white shadow-xs font-extrabold"
-                  : "text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-900/60 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-slate-900 dark:bg-zinc-800 text-white shadow-xs font-extrabold"
+                  : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               <div className="flex items-center gap-3">
-                <span className={isActive ? "scale-110 transition-transform" : ""}>
+                <span className={isActive ? "scale-110 transition-transform text-white" : ""}>
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -104,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <kbd
                   className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition ${
                     isActive
-                      ? "bg-slate-200 dark:bg-zinc-700 text-slate-800 dark:text-zinc-200"
+                      ? "bg-slate-800 dark:bg-zinc-700 text-slate-300 dark:text-zinc-300"
                       : "bg-slate-100 dark:bg-zinc-900 text-slate-400 dark:text-zinc-500"
                   }`}
                 >
@@ -116,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* 4. FOOTER: USER & SYSTEM STATUS */}
+      {/* 3. FOOTER: USER & SYSTEM STATUS */}
       <div className="p-4 border-t border-slate-100 dark:border-zinc-900 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
