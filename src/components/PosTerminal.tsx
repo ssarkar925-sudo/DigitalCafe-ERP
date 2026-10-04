@@ -23,17 +23,16 @@ import {
   QrCode,
   Users,
   Layers,
-  ArrowRight,
-  Sparkles,
   ShoppingBag,
   Receipt,
   X,
-  CreditCard,
 } from "lucide-react";
 
 interface PosTerminalProps {
   catalogItems: CatalogItem[];
   onAddCatalogItem: (item: CatalogItem) => void;
+  onDeleteCatalogItem: (id: string) => void;
+  onClearCatalog?: () => void;
   customers: Customer[];
   onAddCustomer?: (customer: Customer) => void;
   accounts: TreasuryAccount[];
@@ -63,100 +62,13 @@ const CATEGORIES = [
   "Others",
 ];
 
-const QUICK_STARTER_ITEMS: Omit<CatalogItem, "id">[] = [
-  {
-    name: "Photocopy B&W (A4)",
-    category: "Xerox & Print",
-    kind: "SERVICE",
-    pricePaisa: 200n, // ₹2.00
-    costPricePaisa: 50n,
-    currentStock: 9999,
-    minStockAlert: 100,
-    icon: "📄",
-    hotkey: "1",
-  },
-  {
-    name: "Photocopy B&W Both Sides",
-    category: "Xerox & Print",
-    kind: "SERVICE",
-    pricePaisa: 300n, // ₹3.00
-    costPricePaisa: 70n,
-    currentStock: 9999,
-    minStockAlert: 100,
-    icon: "📑",
-    hotkey: "2",
-  },
-  {
-    name: "Color Printout (Text/Doc)",
-    category: "Xerox & Print",
-    kind: "SERVICE",
-    pricePaisa: 1000n, // ₹10.00
-    costPricePaisa: 250n,
-    currentStock: 9999,
-    minStockAlert: 50,
-    icon: "🎨",
-    hotkey: "3",
-  },
-  {
-    name: "Aadhaar Card Print (PVC/Photo)",
-    category: "Photos & Docs",
-    kind: "SERVICE",
-    pricePaisa: 3000n, // ₹30.00
-    costPricePaisa: 700n,
-    currentStock: 9999,
-    minStockAlert: 20,
-    icon: "🪪",
-    hotkey: "4",
-  },
-  {
-    name: "Passport Photo (8 Pcs Instant)",
-    category: "Photos & Docs",
-    kind: "SERVICE",
-    pricePaisa: 5000n, // ₹50.00
-    costPricePaisa: 800n,
-    currentStock: 9999,
-    minStockAlert: 20,
-    icon: "📸",
-    hotkey: "5",
-  },
-  {
-    name: "Lamination (A4 Document)",
-    category: "Lamination & Binding",
-    kind: "SERVICE",
-    pricePaisa: 2000n, // ₹20.00
-    costPricePaisa: 400n,
-    currentStock: 9999,
-    minStockAlert: 20,
-    icon: "🛡️",
-    hotkey: "6",
-  },
-  {
-    name: "Online Govt Exam / Job Form",
-    category: "Online Forms",
-    kind: "SERVICE",
-    pricePaisa: 7000n, // ₹70.00
-    costPricePaisa: 0n,
-    currentStock: 9999,
-    minStockAlert: 0,
-    icon: "📝",
-    hotkey: "7",
-  },
-  {
-    name: "Document Scan & Email/WhatsApp",
-    category: "Photos & Docs",
-    kind: "SERVICE",
-    pricePaisa: 1500n, // ₹15.00
-    costPricePaisa: 0n,
-    currentStock: 9999,
-    minStockAlert: 0,
-    icon: "📤",
-    hotkey: "8",
-  },
-];
+const EMOJI_OPTIONS = ["📄", "📑", "🎨", "🪪", "📸", "🛡️", "📝", "📤", "📦", "✏️", "🎫", "💻"];
 
 export const PosTerminal: React.FC<PosTerminalProps> = ({
   catalogItems,
   onAddCatalogItem,
+  onDeleteCatalogItem,
+  onClearCatalog,
   customers,
   onAddCustomer,
   accounts,
@@ -179,7 +91,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
   // Split Payment Inputs
   const [splitCashRupees, setSplitCashRupees] = useState("");
-  const [splitUpiRupees, setSplitUpiRupees] = useState("");
 
   // --- Modals State ---
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
@@ -191,7 +102,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const [newItemKind, setNewItemKind] = useState<ItemKind>("SERVICE");
   const [newItemPrice, setNewItemPrice] = useState("");
   const [newItemCost, setNewItemCost] = useState("");
-  const [newItemStock, setNewItemStock] = useState("100");
+  const [newItemStock, setNewItemStock] = useState("999");
   const [newItemIcon, setNewItemIcon] = useState("📄");
 
   // Format Paisa to INR String
@@ -305,19 +216,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     setDiscountRupees("");
     setCashTendered("");
     setSplitCashRupees("");
-    setSplitUpiRupees("");
-  };
-
-  // Add Starter Items
-  const handleLoadStarters = () => {
-    QUICK_STARTER_ITEMS.forEach((starter, idx) => {
-      const item: CatalogItem = {
-        ...starter,
-        id: `cat-init-${Date.now()}-${idx}`,
-      };
-      onAddCatalogItem(item);
-      syncCatalogItemToCloud(item);
-    });
   };
 
   // Save New Custom Item
@@ -327,7 +225,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     const priceNum = parseFloat(newItemPrice) || 0;
     const costNum = parseFloat(newItemCost) || 0;
-    const stockNum = parseInt(newItemStock, 10) || 100;
+    const stockNum = parseInt(newItemStock, 10) || 999;
 
     const item: CatalogItem = {
       id: `cat-${Date.now()}`,
@@ -348,6 +246,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     setNewItemName("");
     setNewItemPrice("");
     setNewItemCost("");
+    setNewItemStock("999");
     setIsAddItemModalOpen(false);
   };
 
@@ -456,7 +355,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
-      format: [80, 160], // 80mm thermal/slip receipt format
+      format: [80, 160], // 80mm thermal receipt format
     });
 
     doc.setFont("helvetica", "bold");
@@ -641,7 +540,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* 1. TOP HEADER & SEARCH / FILTER BAR */}
+      {/* 1. TOP HEADER & PROMINENT "+ ADD SERVICE / PRODUCT" BUTTON */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-5 rounded-2xl shadow-xs transition-colors">
         <div>
           <div className="flex items-center gap-2">
@@ -654,17 +553,31 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20">
               Module 01
             </span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+              {catalogItems.length} Services in Catalog
+            </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Fast Xerox, photo, document prints, and online service billing with thermal receipts & WhatsApp.
+            Fast counter billing for Xerox, photo, document prints, and online services with thermal receipts & WhatsApp.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
+          {catalogItems.length > 0 && onClearCatalog && (
+            <button
+              type="button"
+              onClick={onClearCatalog}
+              className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold text-xs transition cursor-pointer"
+              title="Delete all items from catalog"
+            >
+              Clear Catalog
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsAddItemModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>+ Add Service / Product</span>
@@ -678,68 +591,63 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         {/* LEFT SECTION: CATALOG & MULTIPLIERS (7 Cols)                      */}
         {/* ================================================================= */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Search & Category Pills */}
-          <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-4 rounded-2xl shadow-xs space-y-3">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search services (Xerox, Print, Photo, Aadhaar, Lamination)..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
+          {/* Search & Category Pills (Only if items exist) */}
+          {catalogItems.length > 0 && (
+            <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-4 rounded-2xl shadow-xs space-y-3">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search your services..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition cursor-pointer ${
-                    selectedCategory === cat
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-600 dark:text-slate-300"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition cursor-pointer ${
+                      selectedCategory === cat
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-600 dark:text-slate-300"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Catalog Items Grid */}
+          {/* Catalog Items Grid: Completely Clean When Empty */}
           {catalogItems.length === 0 ? (
-            /* Zero Preloaded State: Educational & Clean with 1-Click Starter */
-            <div className="bg-gradient-to-br from-emerald-50/60 via-teal-50/30 to-white dark:bg-slate-800/80 border-2 border-dashed border-emerald-300 dark:border-emerald-700/60 p-8 rounded-2xl text-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-sm">
-                ⚡
+            /* Clean Empty State: 100% No Preloaded Data */
+            <div className="bg-white/95 dark:bg-slate-800/90 border-2 border-dashed border-emerald-300 dark:border-emerald-700/60 p-12 rounded-3xl text-center space-y-4 shadow-xs">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-3xl shadow-xs">
+                <Plus className="w-8 h-8" />
               </div>
               <div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  Catalog Empty (Zero Preloaded Data)
+                  No Services or Products in Catalog
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                  Strict invariant preserved. Start adding your custom services, or 1-click initialize standard Cyber Cafe services (Xerox ₹2, Color Print ₹10, Aadhaar PVC ₹30, Passport Photo ₹50).
+                  Your catalog is completely empty with zero preloaded items. Click the button below to add your services (e.g. Xerox, Printing, Photos, Online Form) with your exact prices.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleLoadStarters}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/25 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Initialize 8 Standard Cafe Services</span>
-                </button>
+              <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => setIsAddItemModalOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-white font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-600/25 flex items-center gap-2 mx-auto cursor-pointer"
                 >
-                  + Create From Scratch
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add Service / Product</span>
                 </button>
               </div>
             </div>
@@ -754,14 +662,24 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 return (
                   <div
                     key={item.id}
-                    className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+                    className={`p-4 rounded-2xl border transition-all flex flex-col justify-between relative group ${
                       inCart
                         ? "bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/50 dark:from-emerald-950/30 dark:to-slate-800 border-emerald-400 dark:border-emerald-600 shadow-sm"
                         : "bg-white/95 dark:bg-slate-800/90 border-slate-200/90 dark:border-slate-700/70 hover:border-emerald-300 dark:hover:border-emerald-700 shadow-xs"
                     }`}
                   >
+                    {/* Delete Item Button (Top Right) */}
+                    <button
+                      type="button"
+                      onClick={() => onDeleteCatalogItem(item.id)}
+                      title="Delete this service from catalog"
+                      className="absolute top-2.5 right-2.5 p-1 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer opacity-60 hover:opacity-100"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+
                     <div>
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2 pr-6">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="text-xl p-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
                             {item.icon}
@@ -868,7 +786,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
             {cart.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
-                Cart is empty. Select services from the catalog or click multipliers (+1, +5, +25).
+                Cart is empty. Select services from your catalog or click multipliers (+1, +5, +25).
               </div>
             ) : (
               cart.map((ci) => (
@@ -890,7 +808,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       <button
                         type="button"
                         onClick={() => updateCartQuantity(ci.catalogId, ci.quantity - 1)}
-                        className="px-2 py-0.5 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        className="px-2 py-0.5 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
                       >
                         -
                       </button>
@@ -906,7 +824,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       <button
                         type="button"
                         onClick={() => updateCartQuantity(ci.catalogId, ci.quantity + 1)}
-                        className="px-2 py-0.5 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        className="px-2 py-0.5 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
                       >
                         +
                       </button>
@@ -919,7 +837,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     <button
                       type="button"
                       onClick={() => removeFromCart(ci.catalogId)}
-                      className="text-slate-400 hover:text-rose-500 p-1"
+                      className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1072,7 +990,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
               <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>➕</span> Add Service or Product to Catalog
+                <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Plus className="w-4 h-4" />
+                </span>
+                Add Service / Product to Catalog
               </h3>
               <button
                 type="button"
@@ -1086,12 +1007,13 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             <form onSubmit={handleSaveCustomItem} className="space-y-3.5">
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Item or Service Name
+                  Service / Product Name *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Color Xerox B4, Lamination PVC, Spiral Binding"
+                  autoFocus
+                  placeholder="e.g. Xerox B&W, Color Print, Aadhaar PVC, Lamination"
                   value={newItemName}
                   onChange={(e) => setNewItemName(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
@@ -1108,8 +1030,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     onChange={(e) => setNewItemKind(e.target.value as ItemKind)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
-                    <option value="SERVICE">Service (Print/Xerox/Form)</option>
-                    <option value="GOODS">Physical Consumable Goods</option>
+                    <option value="SERVICE">Service (Print, Xerox, Form)</option>
+                    <option value="GOODS">Physical Goods (Paper, Pen)</option>
                   </select>
                 </div>
 
@@ -1135,13 +1057,13 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Customer Price (₹)
+                    Sale Price (₹) *
                   </label>
                   <input
                     type="number"
-                    step="0.5"
+                    step="0.25"
                     required
-                    placeholder="e.g. 5.00"
+                    placeholder="e.g. 2.00"
                     value={newItemPrice}
                     onChange={(e) => setNewItemPrice(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white"
@@ -1150,12 +1072,12 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Estimated Cost (₹)
+                    Raw Unit Cost (₹) (Optional)
                   </label>
                   <input
                     type="number"
                     step="0.1"
-                    placeholder="e.g. 0.80"
+                    placeholder="e.g. 0.50"
                     value={newItemCost}
                     onChange={(e) => setNewItemCost(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 dark:text-white"
@@ -1163,30 +1085,25 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Emoji Icon
-                  </label>
-                  <input
-                    type="text"
-                    value={newItemIcon}
-                    onChange={(e) => setNewItemIcon(e.target.value)}
-                    placeholder="📄"
-                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs text-center"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Stock Units
-                  </label>
-                  <input
-                    type="number"
-                    value={newItemStock}
-                    onChange={(e) => setNewItemStock(e.target.value)}
-                    placeholder="100"
-                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono"
-                  />
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Select Icon
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {EMOJI_OPTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setNewItemIcon(emoji)}
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg transition cursor-pointer ${
+                        newItemIcon === emoji
+                          ? "bg-emerald-500 text-white shadow-xs scale-110"
+                          : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -1202,7 +1119,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/25 cursor-pointer"
                 >
-                  Save to Catalog
+                  Save & Add to Catalog
                 </button>
               </div>
             </form>
@@ -1271,7 +1188,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             <button
               type="button"
               onClick={() => setCompletedInvoice(null)}
-              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold text-xs transition cursor-pointer mt-2"
+              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-650 text-white font-bold text-xs transition cursor-pointer mt-2"
             >
               Start Next Sale ➔
             </button>

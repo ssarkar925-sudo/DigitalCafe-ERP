@@ -66,7 +66,22 @@ export function App() {
   // Live Accounts & State (Zero Preloaded Data)
   const [accounts, setAccounts] = useState<TreasuryAccount[]>(INITIAL_ACCOUNTS);
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>(INITIAL_CATALOG_ITEMS);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_user_catalog");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item: any) => ({
+            ...item,
+            pricePaisa: BigInt(item.pricePaisa || 0),
+            costPricePaisa: BigInt(item.costPricePaisa || 0),
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
   const [creditCards, setCreditCards] = useState<CreditCardItem[]>(INITIAL_CREDIT_CARDS);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [digitalTransactions, setDigitalTransactions] = useState<DigitalTransaction[]>([]);
@@ -80,9 +95,6 @@ export function App() {
     });
     fetchLiveCustomers().then((custs) => {
       if (custs && custs.length > 0) setCustomers(custs);
-    });
-    fetchLiveCatalogItems().then((items) => {
-      if (items && items.length > 0) setCatalogItems(items);
     });
   }, []);
 
@@ -313,8 +325,44 @@ export function App() {
   };
 
   const handleAddCatalogItem = (item: CatalogItem) => {
-    setCatalogItems((prev) => [item, ...prev]);
+    setCatalogItems((prev) => {
+      const updated = [item, ...prev];
+      try {
+        const toSave = updated.map((i) => ({
+          ...i,
+          pricePaisa: i.pricePaisa.toString(),
+          costPricePaisa: i.costPricePaisa.toString(),
+        }));
+        localStorage.setItem("dc_user_catalog", JSON.stringify(toSave));
+      } catch (e) {}
+      return updated;
+    });
     showToast(`✓ Added "${item.name}" to Catalog (${formatPaisa(item.pricePaisa)})`);
+  };
+
+  const handleDeleteCatalogItem = (id: string) => {
+    setCatalogItems((prev) => {
+      const updated = prev.filter((i) => i.id !== id);
+      try {
+        const toSave = updated.map((i) => ({
+          ...i,
+          pricePaisa: i.pricePaisa.toString(),
+          costPricePaisa: i.costPricePaisa.toString(),
+        }));
+        localStorage.setItem("dc_user_catalog", JSON.stringify(toSave));
+      } catch (e) {}
+      return updated;
+    });
+    showToast(`✓ Removed item from Catalog`);
+  };
+
+  const handleClearCatalog = () => {
+    setCatalogItems([]);
+    try {
+      localStorage.removeItem("dc_user_catalog");
+      localStorage.removeItem("dc_catalog_items");
+    } catch (e) {}
+    showToast(`✓ Catalog cleared (0 items)`);
   };
 
   return (
@@ -362,11 +410,13 @@ export function App() {
           />
         )}
 
-        {/* WORKSPACE VIEW: MODULE 1 POS */}
+        {/* WORKSPACE VIEW: MODULE 1 POS (ZERO PRELOADED DATA BY DEFAULT) */}
         {activeTab === "pos" && (
           <PosTerminal
             catalogItems={catalogItems}
             onAddCatalogItem={handleAddCatalogItem}
+            onDeleteCatalogItem={handleDeleteCatalogItem}
+            onClearCatalog={handleClearCatalog}
             customers={customers}
             accounts={accounts}
             onRecordSale={handleRecordPosSale}
