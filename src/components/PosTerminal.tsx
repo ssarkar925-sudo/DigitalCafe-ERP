@@ -290,6 +290,101 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     return payableTotalPaisa - totalSplitAllocatedPaisa;
   }, [payableTotalPaisa, totalSplitAllocatedPaisa]);
 
+  // Split Visual Percentages for Segmented Progress Bar
+  const splitPcts = useMemo(() => {
+    if (payableTotalPaisa <= 0n) return { cash: 0, upi: 0, khata: 0, remaining: 0 };
+    const c = Math.min(100, Math.round(Number((splitCashPaisa * 1000n) / payableTotalPaisa) / 10));
+    const u = Math.min(100 - c, Math.round(Number((splitUpiPaisa * 1000n) / payableTotalPaisa) / 10));
+    const k = Math.min(100 - c - u, Math.round(Number((splitKhataPaisa * 1000n) / payableTotalPaisa) / 10));
+    const r = Math.max(0, 100 - c - u - k);
+    return { cash: c, upi: u, khata: k, remaining: r };
+  }, [payableTotalPaisa, splitCashPaisa, splitUpiPaisa, splitKhataPaisa]);
+
+  // Fast Cash Quick-Denomination Suggestions (e.g. Exact, 50, 100, 200, 500)
+  const cashDenominations = useMemo(() => {
+    const totalRupees = Math.ceil(Number(payableTotalPaisa) / 100);
+    if (totalRupees <= 0) return [10, 20, 50, 100, 500];
+    const set = new Set<number>();
+    set.add(totalRupees);
+    [10, 20, 50, 100, 200, 500].forEach((d) => {
+      if (d >= totalRupees) set.add(d);
+    });
+    const next50 = Math.ceil(totalRupees / 50) * 50;
+    const next100 = Math.ceil(totalRupees / 100) * 100;
+    const next500 = Math.ceil(totalRupees / 500) * 500;
+    if (next50 > totalRupees) set.add(next50);
+    if (next100 > totalRupees) set.add(next100);
+    if (next500 > totalRupees) set.add(next500);
+    return Array.from(set).sort((a, b) => a - b).slice(0, 5);
+  }, [payableTotalPaisa]);
+
+  // Customer Auto-Search & Existing Khata Due Detector
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const matchedCustomers = useMemo(() => {
+    if (!customerName.trim() || customerName.trim() === "Walk-in Customer") return [];
+    const query = customerName.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.phone.toLowerCase().includes(query)
+    );
+  }, [customers, customerName]);
+
+  const selectedCustomerRecord = useMemo(() => {
+    return customers.find(
+      (c) =>
+        (customerPhone && c.phone === customerPhone) ||
+        (customerName && c.name.toLowerCase() === customerName.toLowerCase())
+    );
+  }, [customers, customerName, customerPhone]);
+
+  // Quick Cyber Cafe Starter Presets (1-Click Catalog Launcher when 0 items)
+  const COMMON_CYBER_SERVICES: Omit<CatalogItem, "id">[] = [
+    { name: "B&W Xerox (Single)", category: "Xerox & Print", kind: "SERVICE", pricePaisa: 200n, costPricePaisa: 50n, currentStock: 999, minStockAlert: 10, icon: "📄" },
+    { name: "B&W Xerox (B2B Double)", category: "Xerox & Print", kind: "SERVICE", pricePaisa: 300n, costPricePaisa: 80n, currentStock: 999, minStockAlert: 10, icon: "📑" },
+    { name: "Color Print (A4)", category: "Xerox & Print", kind: "SERVICE", pricePaisa: 1000n, costPricePaisa: 300n, currentStock: 999, minStockAlert: 10, icon: "🎨" },
+    { name: "Passport Photos (8x)", category: "Photos & Docs", kind: "SERVICE", pricePaisa: 4000n, costPricePaisa: 1000n, currentStock: 999, minStockAlert: 10, icon: "📸" },
+    { name: "PVC Aadhaar / Smart Card", category: "Photos & Docs", kind: "SERVICE", pricePaisa: 5000n, costPricePaisa: 1500n, currentStock: 999, minStockAlert: 10, icon: "🪪" },
+    { name: "Govt Job Application Form", category: "Online Forms", kind: "SERVICE", pricePaisa: 10000n, costPricePaisa: 0n, currentStock: 999, minStockAlert: 10, icon: "💻" },
+    { name: "Lamination (A4 Pouch)", category: "Lamination & Binding", kind: "SERVICE", pricePaisa: 2000n, costPricePaisa: 500n, currentStock: 999, minStockAlert: 10, icon: "🛡️" },
+    { name: "PAN Card Application", category: "Online Forms", kind: "SERVICE", pricePaisa: 15000n, costPricePaisa: 10700n, currentStock: 999, minStockAlert: 10, icon: "📝" },
+  ];
+
+  const handleAddPresetItem = (preset: Omit<CatalogItem, "id">) => {
+    const newItem: CatalogItem = {
+      ...preset,
+      id: `cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    };
+    onAddCatalogItem(newItem);
+    syncCatalogItemToCloud(newItem);
+  };
+
+  const handleAddAllPresets = () => {
+    COMMON_CYBER_SERVICES.forEach((preset, idx) => {
+      const newItem: CatalogItem = {
+        ...preset,
+        id: `cat-${Date.now()}-${idx}`,
+      };
+      onAddCatalogItem(newItem);
+      syncCatalogItemToCloud(newItem);
+    });
+  };
+
+  // Quick Discount Selector
+  const applyQuickDiscount = (val: "none" | "5" | "10" | "20" | "5pct" | "10pct") => {
+    if (val === "none") {
+      setDiscountRupees("");
+    } else if (val === "5pct") {
+      const disc = (subtotalPaisa * 5n) / 100n;
+      setDiscountRupees((Number(disc) / 100).toFixed(0));
+    } else if (val === "10pct") {
+      const disc = (subtotalPaisa * 10n) / 100n;
+      setDiscountRupees((Number(disc) / 100).toFixed(0));
+    } else {
+      setDiscountRupees(val);
+    }
+  };
+
   // Add Item to Cart with multiplier
   const addToCart = (item: CatalogItem, qtyToAdd: number = 1) => {
     setCart((prev) => {
@@ -945,29 +1040,75 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
           {/* Catalog Render: Empty State vs Grid vs List */}
           {catalogItems.length === 0 ? (
-            /* Clean Empty State: 100% Zero Preloaded Data with Clear + Add Option */
-            <div className="bg-white/95 dark:bg-slate-800/90 border-2 border-dashed border-emerald-300 dark:border-emerald-700/60 p-12 rounded-3xl text-center space-y-4 shadow-xs">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-3xl shadow-xs">
-                <Plus className="w-8 h-8" />
-              </div>
-              <div>
+            /* Clean Empty State: 100% Zero Preloaded Data with Clear + Add Option + 1-Click Starters */
+            <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-6 sm:p-8 rounded-3xl space-y-6 shadow-sm">
+              <div className="text-center space-y-2">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-xs">
+                  <Plus className="w-7 h-7" />
+                </div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  No Services or Products in Catalog
+                  Fresh Catalog Ready (0 Items)
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                  Zero preloaded data. Use the option below to add your exact services (e.g. Xerox, Printing, Photos, Online Forms) with your custom pricing.
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  Your catalog starts 100% clean without demo data. Create your custom services or tap standard cyber cafe presets below to populate in 1 click.
                 </p>
+
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenAddModal}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Add Custom Service / Product</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddAllPresets}
+                    className="px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>⚡ Add All 8 Standard Services (1-Click)</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={handleOpenAddModal}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-600/25 flex items-center gap-2 mx-auto cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Add Your First Service / Product</span>
-                </button>
+              {/* 1-Click Preset Cards */}
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <span>⚡</span> 1-Click Popular Presets (Tap to Add to Your Shop):
+                  </span>
+                  <span className="text-[10px] text-slate-400">Click to instantly add</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {COMMON_CYBER_SERVICES.map((srv, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleAddPresetItem(srv)}
+                      className="p-3 rounded-2xl bg-slate-50/90 hover:bg-emerald-50/90 dark:bg-slate-750/70 dark:hover:bg-emerald-950/40 border border-slate-200/80 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700 text-left transition flex flex-col justify-between gap-2 group cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xl p-1.5 rounded-xl bg-white dark:bg-slate-700 shadow-2xs group-hover:scale-110 transition-transform">
+                          {srv.icon}
+                        </span>
+                        <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                          +{formatPaisa(srv.pricePaisa)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {srv.name}
+                        </p>
+                        <span className="text-[9px] text-slate-400 block truncate">
+                          {srv.category}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : filteredItems.length === 0 ? (
@@ -1181,45 +1322,107 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             </div>
           </div>
 
-          {/* Customer Input */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-50 dark:bg-slate-750/70 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                Customer Name
-              </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Walk-in Customer"
-                className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden"
-              />
+          {/* Customer Input Dock with Smart Auto-Suggest & Khata Debt Detector */}
+          <div className="relative bg-slate-50 dark:bg-slate-750/70 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-700 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="relative">
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  Customer Name
+                </label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onFocus={() => setIsCustomerDropdownOpen(true)}
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    setIsCustomerDropdownOpen(true);
+                  }}
+                  placeholder="Walk-in Customer"
+                  className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
+                />
+
+                {/* Auto-suggest dropdown */}
+                {isCustomerDropdownOpen && matchedCustomers.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 max-h-40 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60 animate-in fade-in-50 duration-100">
+                    {matchedCustomers.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setCustomerName(c.name);
+                          if (c.phone) setCustomerPhone(c.phone);
+                          setIsCustomerDropdownOpen(false);
+                        }}
+                        className="w-full p-2 text-left hover:bg-emerald-50/80 dark:hover:bg-slate-700 flex items-center justify-between text-xs transition cursor-pointer"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white">{c.name}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{c.phone || "No phone"}</p>
+                        </div>
+                        {c.currentDuePaisa > 0n && (
+                          <span className="text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">
+                            Due: {formatPaisa(c.currentDuePaisa)}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>WhatsApp Phone</span>
+                  {customerName !== "Walk-in Customer" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomerName("Walk-in Customer");
+                        setCustomerPhone("");
+                      }}
+                      className="text-[9px] text-slate-400 hover:text-rose-500 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </label>
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="9876543210"
+                  className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                WhatsApp Phone
-              </label>
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="9876543210"
-                className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-900 dark:text-white focus:outline-hidden"
-              />
-            </div>
+
+            {/* Existing Khata Due Debt Alert for this Customer */}
+            {selectedCustomerRecord && selectedCustomerRecord.currentDuePaisa > 0n && (
+              <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 flex items-center justify-between text-[11px] font-bold text-rose-800 dark:text-rose-300">
+                <span className="flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  Existing Khata Balance Due:
+                </span>
+                <span className="font-mono text-xs font-black text-rose-700 dark:text-rose-300">
+                  {formatPaisa(selectedCustomerRecord.currentDuePaisa)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Line Items List */}
           <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
             {cart.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
-                Cart is empty. Select services from your catalog or click multipliers (+1, +5, +25).
+              <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl space-y-1">
+                <ShoppingBag className="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600 mb-1" />
+                <p className="font-bold text-slate-500 dark:text-slate-400">Cart is empty</p>
+                <p className="text-[10px]">Select services from catalog or tap multipliers (+1, +5, +25).</p>
               </div>
             ) : (
               cart.map((ci) => (
                 <div
                   key={ci.catalogId}
-                  className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200/80 dark:border-slate-600 flex items-center justify-between gap-2"
+                  className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200/80 dark:border-slate-600 flex items-center justify-between gap-2 shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-700 transition"
                 >
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
@@ -1231,7 +1434,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex items-center border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden bg-white dark:bg-slate-800">
+                    <div className="flex items-center border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-2xs">
                       <button
                         type="button"
                         onClick={() => updateCartQuantity(ci.catalogId, ci.quantity - 1)}
@@ -1264,7 +1467,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     <button
                       type="button"
                       onClick={() => removeFromCart(ci.catalogId)}
-                      className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
+                      className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition"
+                      title="Remove from cart"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1274,72 +1478,108 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             )}
           </div>
 
-          {/* Subtotal, Discount & Grand Total */}
-          <div className="bg-slate-50 dark:bg-slate-750/70 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700 space-y-2">
+          {/* Subtotal, Fast Discount Chips & Payable Grand Total */}
+          <div className="bg-slate-50 dark:bg-slate-750/70 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700 space-y-2.5">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
               <span>Subtotal</span>
-              <span className="font-mono text-slate-900 dark:text-white">
+              <span className="font-mono font-bold text-slate-900 dark:text-white">
                 {formatPaisa(subtotalPaisa)}
               </span>
             </div>
 
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
-              <span>Discount (₹)</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={discountRupees}
-                onChange={(e) => setDiscountRupees(e.target.value)}
-                className="w-20 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-0.5 text-right font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden"
-              />
+            {/* Quick Discount Selector */}
+            <div className="space-y-1.5 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <span className="flex items-center gap-1">
+                  <span>Discount</span>
+                  {discountPaisa > 0n && (
+                    <span className="text-[10px] text-rose-500 font-mono font-bold">
+                      (-{formatPaisa(discountPaisa)})
+                    </span>
+                  )}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="₹ 0"
+                  value={discountRupees}
+                  onChange={(e) => setDiscountRupees(e.target.value)}
+                  className="w-20 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-0.5 text-right font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-emerald-500"
+                />
+              </div>
+
+              {/* Fast Discount Buttons */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                {[
+                  { label: "None", val: "none" as const },
+                  { label: "-₹5", val: "5" as const },
+                  { label: "-₹10", val: "10" as const },
+                  { label: "-₹20", val: "20" as const },
+                  { label: "-5%", val: "5pct" as const },
+                  { label: "-10%", val: "10pct" as const },
+                ].map((chip) => (
+                  <button
+                    key={chip.val}
+                    type="button"
+                    onClick={() => applyQuickDiscount(chip.val)}
+                    className="px-2 py-0.5 rounded-md bg-white hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                Payable Total
-              </span>
-              <span className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+            {/* Payable Grand Total */}
+            <div className="flex items-center justify-between pt-2 border-t-2 border-slate-200 dark:border-slate-700">
+              <div>
+                <span className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white block">
+                  Payable Total
+                </span>
+                <span className="text-[10px] text-slate-400">Net bill amount</span>
+              </div>
+              <span className="text-2xl font-black font-mono tracking-tight text-emerald-600 dark:text-emerald-400">
                 {formatPaisa(payableTotalPaisa)}
               </span>
             </div>
           </div>
 
-          {/* Payment Method Selector (4 Tenders) */}
-          <div className="space-y-2">
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Select Payment Tender
+          {/* Payment Method Selector (4 Tactile Tenders) */}
+          <div className="space-y-2.5">
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <span>Select Payment Tender</span>
+              <span className="text-[9px] font-mono font-normal">Active: {paymentMethod}</span>
             </label>
             <div className="grid grid-cols-4 gap-1.5">
               {[
-                { id: "CASH", label: "Cash", icon: <Wallet className="w-3.5 h-3.5" /> },
-                { id: "UPI", label: "UPI QR", icon: <QrCode className="w-3.5 h-3.5" /> },
-                { id: "KHATA", label: "Khata", icon: <Users className="w-3.5 h-3.5" /> },
-                { id: "SPLIT", label: "Split", icon: <Layers className="w-3.5 h-3.5" /> },
+                { id: "CASH", label: "Cash", icon: <Wallet className="w-4 h-4" /> },
+                { id: "UPI", label: "UPI QR", icon: <QrCode className="w-4 h-4" /> },
+                { id: "KHATA", label: "Khata", icon: <Users className="w-4 h-4" /> },
+                { id: "SPLIT", label: "Split", icon: <Layers className="w-4 h-4" /> },
               ].map((m) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                  className={`p-2 rounded-xl text-center flex flex-col items-center gap-1 transition cursor-pointer ${
+                  className={`p-2.5 rounded-2xl text-center flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
                     paymentMethod === m.id
-                      ? "bg-emerald-600 text-white font-extrabold shadow-xs"
+                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold shadow-md shadow-emerald-600/25 scale-[1.02]"
                       : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-300 font-bold"
                   }`}
                 >
                   {m.icon}
-                  <span className="text-[10px]">{m.label}</span>
+                  <span className="text-[10px] font-bold">{m.label}</span>
                 </button>
               ))}
             </div>
 
-            {/* If CASH: Cash Tendered & Instant Change Calculator */}
+            {/* If CASH: Quick Denomination Chips & Instant Change Display */}
             {paymentMethod === "CASH" && (
-              <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 p-3 rounded-xl space-y-2">
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50/40 dark:from-emerald-950/40 dark:to-slate-800 border-2 border-emerald-300/80 dark:border-emerald-700/60 p-3.5 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-emerald-900 dark:text-emerald-300">
-                    Cash Received from Customer (₹):
+                  <span className="font-extrabold text-emerald-950 dark:text-emerald-200">
+                    💵 Cash Received (₹):
                   </span>
                   <input
                     type="number"
@@ -1347,15 +1587,40 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     placeholder="e.g. 500"
                     value={cashTendered}
                     onChange={(e) => setCashTendered(e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-700 border border-emerald-300 dark:border-emerald-700 rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-hidden"
+                    className="w-28 bg-white dark:bg-slate-700 border-2 border-emerald-400 dark:border-emerald-600 rounded-xl px-2.5 py-1 text-right font-mono font-bold text-sm text-slate-900 dark:text-white focus:outline-emerald-500"
                   />
                 </div>
+
+                {/* Instant Denomination Chips */}
+                <div className="flex items-center justify-between gap-1 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                  <span className="text-[9px] font-extrabold text-emerald-800 dark:text-emerald-300 uppercase">
+                    Quick:
+                  </span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {cashDenominations.map((denom) => (
+                      <button
+                        key={denom}
+                        type="button"
+                        onClick={() => setCashTendered(denom.toString())}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition cursor-pointer ${
+                          cashTendered === denom.toString()
+                            ? "bg-emerald-600 text-white shadow-2xs"
+                            : "bg-white dark:bg-slate-700 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-600 hover:bg-emerald-100"
+                        }`}
+                      >
+                        ₹{denom}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Change to Return Pill */}
                 {cashTenderedPaisa > 0n && (
-                  <div className="flex items-center justify-between pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60 text-xs font-black">
-                    <span className="text-emerald-800 dark:text-emerald-300">
-                      Change to Return:
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-white/90 dark:bg-slate-700/80 border border-emerald-200 dark:border-emerald-700 text-xs font-black">
+                    <span className="text-emerald-900 dark:text-emerald-300">
+                      Change to Return to Customer:
                     </span>
-                    <span className="text-emerald-700 dark:text-emerald-400 font-mono text-sm">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-mono text-base">
                       {formatPaisa(cashChangeToReturnPaisa)}
                     </span>
                   </div>
@@ -1363,38 +1628,94 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               </div>
             )}
 
-            {/* If pure KHATA Tender: Show notification */}
+            {/* If UPI QR: Dynamic On-Screen Live QR Code */}
+            {paymentMethod === "UPI" && (
+              <div className="bg-gradient-to-br from-purple-50 to-violet-50/40 dark:from-purple-950/40 dark:to-slate-800 border-2 border-purple-300/80 dark:border-purple-700/60 p-4 rounded-2xl space-y-3 text-center">
+                <div className="flex items-center justify-between border-b border-purple-200/60 dark:border-purple-800/60 pb-2">
+                  <span className="font-extrabold text-xs text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
+                    <QrCode className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    Scan Dynamic Merchant QR
+                  </span>
+                  <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded-full">
+                    Exact: {formatPaisa(payableTotalPaisa)}
+                  </span>
+                </div>
+
+                {/* Live Dynamic QR Code Image */}
+                <div className="p-3 bg-white rounded-2xl border-2 border-purple-200 inline-block shadow-sm mx-auto">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=4&data=${encodeURIComponent(
+                      `upi://pay?pa=sarkarcommunication@sbi&pn=Sarkar+Communication&am=${(Number(payableTotalPaisa) / 100).toFixed(2)}&cu=INR`
+                    )}`}
+                    alt="Scan UPI QR"
+                    className="w-32 h-32 mx-auto rounded-lg"
+                  />
+                  <span className="text-[9px] font-mono text-slate-500 block mt-1">
+                    sarkarcommunication@sbi
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold text-purple-900 dark:text-purple-200">
+                    Customer scans with GPay • PhonePe • Paytm • BHIM
+                  </p>
+                  <p className="text-[10px] text-purple-600/80 dark:text-purple-300/70 flex items-center justify-center gap-1 font-semibold">
+                    <span>🔊 Soundbox Audio Announcement: Linked</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* If pure KHATA Tender: Show notification & Credit Limit Check */}
             {paymentMethod === "KHATA" && (
-              <div className="bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 p-3 rounded-xl space-y-1.5 text-xs">
+              <div className="bg-gradient-to-br from-rose-50 to-pink-50/40 dark:from-rose-950/40 dark:to-slate-800 border-2 border-rose-300/80 dark:border-rose-800/60 p-3.5 rounded-2xl space-y-2 text-xs">
                 <div className="flex items-center justify-between font-bold text-rose-900 dark:text-rose-300">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  <span className="flex items-center gap-1.5 font-extrabold">
+                    <Users className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                     Khata Credit Sale (Udhaar):
                   </span>
-                  <span className="font-mono text-sm">{formatPaisa(payableTotalPaisa)}</span>
+                  <span className="font-mono text-sm font-black">{formatPaisa(payableTotalPaisa)}</span>
                 </div>
-                <p className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">
-                  📌 Full amount will be added to Customer Due ledger for{" "}
+                <p className="text-[11px] text-rose-700 dark:text-rose-400 font-semibold">
+                  📌 Full bill will be posted to Customer Ledger for{" "}
                   <strong className="underline">
                     {customerName.trim() && customerName.trim() !== "Walk-in Customer"
                       ? customerName
-                      : "Customer Name (Enter above)"}
+                      : "⚠️ Customer Name (Enter above)"}
                   </strong>
                 </p>
               </div>
             )}
 
-            {/* If SPLIT: 3-Way Cash + UPI QR + Khata Udhaar Breakdown */}
+            {/* If SPLIT: 3-Way Cash + UPI QR + Khata Udhaar Breakdown WITH Visual Segmented Progress Bar */}
             {paymentMethod === "SPLIT" && (
-              <div className="bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-800/80 dark:to-slate-800/50 border border-indigo-200/80 dark:border-indigo-800/60 p-3 rounded-xl space-y-2.5 text-xs">
-                <div className="flex items-center justify-between border-b border-indigo-100 dark:border-slate-700 pb-1.5">
+              <div className="bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-800/80 dark:to-slate-800/50 border-2 border-indigo-200/80 dark:border-indigo-800/60 p-3.5 rounded-2xl space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-indigo-100 dark:border-slate-700 pb-2">
                   <span className="font-extrabold text-[11px] text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     3-Way Split Tender Breakdown
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Bill Total: <strong className="font-mono text-slate-900 dark:text-white">{formatPaisa(payableTotalPaisa)}</strong>
+                    Bill: <strong className="font-mono text-slate-900 dark:text-white">{formatPaisa(payableTotalPaisa)}</strong>
                   </span>
+                </div>
+
+                {/* Visual Segmented Allocation Bar */}
+                <div className="space-y-1">
+                  <div className="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
+                    <div style={{ width: `${splitPcts.cash}%` }} className="bg-emerald-500 transition-all duration-300" title={`Cash: ${splitPcts.cash}%`} />
+                    <div style={{ width: `${splitPcts.upi}%` }} className="bg-purple-500 transition-all duration-300" title={`UPI QR: ${splitPcts.upi}%`} />
+                    <div style={{ width: `${splitPcts.khata}%` }} className="bg-rose-500 transition-all duration-300" title={`Khata Due: ${splitPcts.khata}%`} />
+                    {splitPcts.remaining > 0 && (
+                      <div style={{ width: `${splitPcts.remaining}%` }} className="bg-amber-400/60 dark:bg-amber-500/40 animate-pulse" title={`Remaining: ${splitPcts.remaining}%`} />
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 dark:text-slate-400 px-0.5">
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>Cash {splitPcts.cash}%</span>
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500 inline-block"></span>UPI {splitPcts.upi}%</span>
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>Khata {splitPcts.khata}%</span>
+                    {splitPcts.remaining > 0 && <span className="text-amber-600 dark:text-amber-400 font-bold">Unallocated {splitPcts.remaining}%</span>}
+                  </div>
                 </div>
 
                 {/* 1. Cash Tender */}
@@ -1410,7 +1731,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         const rem = payableTotalPaisa - (splitUpiPaisa + splitKhataPaisa);
                         setSplitCashRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
                       }}
-                      className="px-1.5 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-850 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold cursor-pointer transition"
+                      className="px-2 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-850 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold cursor-pointer transition"
                       title="Auto-fill remaining balance to Cash"
                     >
                       Fill
@@ -1440,7 +1761,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         const rem = payableTotalPaisa - (splitCashPaisa + splitKhataPaisa);
                         setSplitUpiRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
                       }}
-                      className="px-1.5 py-0.5 rounded bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 dark:hover:bg-purple-850 text-purple-800 dark:text-purple-200 text-[10px] font-bold cursor-pointer transition"
+                      className="px-2 py-0.5 rounded-lg bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 dark:hover:bg-purple-850 text-purple-800 dark:text-purple-200 text-[10px] font-bold cursor-pointer transition"
                       title="Auto-fill remaining balance to UPI QR"
                     >
                       Fill
@@ -1470,7 +1791,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         const rem = payableTotalPaisa - (splitCashPaisa + splitUpiPaisa);
                         setSplitKhataRupees(rem > 0n ? (Number(rem) / 100).toFixed(2).replace(/\.00$/, "") : "0");
                       }}
-                      className="px-1.5 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/60 dark:hover:bg-rose-850 text-rose-800 dark:text-rose-200 text-[10px] font-bold cursor-pointer transition"
+                      className="px-2 py-0.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/60 dark:hover:bg-rose-850 text-rose-800 dark:text-rose-200 text-[10px] font-bold cursor-pointer transition"
                       title="Auto-fill remaining balance to Khata"
                     >
                       Fill
@@ -1490,7 +1811,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 {/* Status Bar / Balance Check */}
                 <div className="pt-2 border-t border-indigo-100 dark:border-slate-700">
                   {splitRemainingPaisa === 0n && totalSplitAllocatedPaisa > 0n ? (
-                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold flex items-center justify-between">
                       <span className="flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         Allocated Perfectly ({formatPaisa(totalSplitAllocatedPaisa)})
@@ -1498,12 +1819,12 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       <span className="text-[10px] text-emerald-600 dark:text-emerald-300">✓ Ready to tender</span>
                     </div>
                   ) : splitRemainingPaisa > 0n ? (
-                    <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] font-bold flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] font-bold flex items-center justify-between">
                       <span>⚠️ Unallocated Remaining:</span>
                       <span className="font-mono text-xs font-black">{formatPaisa(splitRemainingPaisa)}</span>
                     </div>
                   ) : (
-                    <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-300 text-[11px] font-bold flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-300 text-[11px] font-bold flex items-center justify-between">
                       <span>❌ Exceeds Bill by:</span>
                       <span className="font-mono text-xs font-black">{formatPaisa(-splitRemainingPaisa)}</span>
                     </div>
@@ -1530,10 +1851,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             type="button"
             disabled={cart.length === 0 || (paymentMethod === "SPLIT" && splitRemainingPaisa !== 0n)}
             onClick={handleCompleteSale}
-            className={`w-full py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition ${
+            className={`w-full py-3.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer ${
               cart.length === 0 || (paymentMethod === "SPLIT" && splitRemainingPaisa !== 0n)
-                ? "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed"
-                : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30 cursor-pointer"
+                ? "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed shadow-none"
+                : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30 hover:scale-[1.01] active:scale-[0.99]"
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
