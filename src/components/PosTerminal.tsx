@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   CatalogItem,
   Customer,
@@ -26,11 +26,35 @@ import {
   ShoppingBag,
   Receipt,
   X,
+  Pencil,
+  LayoutGrid,
+  List,
+  PauseCircle,
+  PlayCircle,
+  Database,
+  ArrowRight,
+  Sparkles,
+  Info,
+  Clock,
+  ChevronRight,
 } from "lucide-react";
+
+export interface HeldOrder {
+  id: string;
+  heldAt: string;
+  time: string;
+  customerName: string;
+  customerPhone: string;
+  items: CartItem[];
+  discountRupees: string;
+  subtotalPaisa: bigint;
+  totalPaisa: bigint;
+}
 
 interface PosTerminalProps {
   catalogItems: CatalogItem[];
   onAddCatalogItem: (item: CatalogItem) => void;
+  onEditCatalogItem: (item: CatalogItem) => void;
   onDeleteCatalogItem: (id: string) => void;
   onClearCatalog?: () => void;
   customers: Customer[];
@@ -67,6 +91,7 @@ const EMOJI_OPTIONS = ["📄", "📑", "🎨", "🪪", "📸", "🛡️", "📝"
 export const PosTerminal: React.FC<PosTerminalProps> = ({
   catalogItems,
   onAddCatalogItem,
+  onEditCatalogItem,
   onDeleteCatalogItem,
   onClearCatalog,
   customers,
@@ -75,6 +100,16 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   onRecordSale,
   timeStr,
 }) => {
+  // --- View Mode: Grid vs List ---
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    return (localStorage.getItem("dc_pos_view_mode") as "grid" | "list") || "grid";
+  });
+
+  const toggleViewMode = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    localStorage.setItem("dc_pos_view_mode", mode);
+  };
+
   // --- Search & Filter State ---
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -92,18 +127,88 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   // Split Payment Inputs
   const [splitCashRupees, setSplitCashRupees] = useState("");
 
+  // --- Held Orders State (Suspended Carts) ---
+  const [heldOrders, setHeldOrders] = useState<HeldOrder[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_held_orders");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((h: any) => ({
+            ...h,
+            subtotalPaisa: BigInt(h.subtotalPaisa || 0),
+            totalPaisa: BigInt(h.totalPaisa || 0),
+            items: h.items.map((i: any) => ({
+              ...i,
+              unitPricePaisa: BigInt(i.unitPricePaisa || 0),
+              costPricePaisa: BigInt(i.costPricePaisa || 0),
+              totalPaisa: BigInt(i.totalPaisa || 0),
+            })),
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  // Save held orders to localStorage
+  useEffect(() => {
+    try {
+      const serializable = heldOrders.map((h) => ({
+        ...h,
+        subtotalPaisa: h.subtotalPaisa.toString(),
+        totalPaisa: h.totalPaisa.toString(),
+        items: h.items.map((i) => ({
+          ...i,
+          unitPricePaisa: i.unitPricePaisa.toString(),
+          costPricePaisa: i.costPricePaisa.toString(),
+          totalPaisa: i.totalPaisa.toString(),
+        })),
+      }));
+      localStorage.setItem("dc_held_orders", JSON.stringify(serializable));
+    } catch (e) {}
+  }, [heldOrders]);
+
   // --- Modals State ---
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
+  const [isHeldOrdersModalOpen, setIsHeldOrdersModalOpen] = useState(false);
+  const [isCatalogManagerOpen, setIsCatalogManagerOpen] = useState(false);
   const [completedInvoice, setCompletedInvoice] = useState<InvoiceRecord | null>(null);
 
-  // New Catalog Item Form
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemCategory, setNewItemCategory] = useState("Xerox & Print");
-  const [newItemKind, setNewItemKind] = useState<ItemKind>("SERVICE");
-  const [newItemPrice, setNewItemPrice] = useState("");
-  const [newItemCost, setNewItemCost] = useState("");
-  const [newItemStock, setNewItemStock] = useState("999");
-  const [newItemIcon, setNewItemIcon] = useState("📄");
+  // Add / Edit Catalog Item Form Fields
+  const [formName, setFormName] = useState("");
+  const [formCategory, setFormCategory] = useState("Xerox & Print");
+  const [formKind, setFormKind] = useState<ItemKind>("SERVICE");
+  const [formPrice, setFormPrice] = useState("");
+  const [formCost, setFormCost] = useState("");
+  const [formStock, setFormStock] = useState("999");
+  const [formIcon, setFormIcon] = useState("📄");
+
+  // Open Edit Modal with Pre-filled Values
+  const handleOpenEditModal = (item: CatalogItem) => {
+    setEditingItem(item);
+    setFormName(item.name);
+    setFormCategory(item.category);
+    setFormKind(item.kind);
+    setFormPrice((Number(item.pricePaisa) / 100).toFixed(2));
+    setFormCost((Number(item.costPricePaisa) / 100).toFixed(2));
+    setFormStock(item.currentStock.toString());
+    setFormIcon(item.icon || "📄");
+  };
+
+  // Open Add Modal
+  const handleOpenAddModal = () => {
+    setEditingItem(null);
+    setFormName("");
+    setFormCategory("Xerox & Print");
+    setFormKind("SERVICE");
+    setFormPrice("");
+    setFormCost("");
+    setFormStock("999");
+    setFormIcon("📄");
+    setIsAddItemModalOpen(true);
+  };
 
   // Format Paisa to INR String
   const formatPaisa = (paisa: bigint) => {
@@ -213,41 +318,96 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
   const clearCart = () => {
     setCart([]);
+    setCustomerName("Walk-in Customer");
+    setCustomerPhone("");
     setDiscountRupees("");
     setCashTendered("");
     setSplitCashRupees("");
   };
 
-  // Save New Custom Item
-  const handleSaveCustomItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItemName.trim()) return;
+  // --- HOLD ORDER (SUSPEND CURRENT SALE) ---
+  const handleHoldOrder = () => {
+    if (cart.length === 0) return;
 
-    const priceNum = parseFloat(newItemPrice) || 0;
-    const costNum = parseFloat(newItemCost) || 0;
-    const stockNum = parseInt(newItemStock, 10) || 999;
-
-    const item: CatalogItem = {
-      id: `cat-${Date.now()}`,
-      name: newItemName.trim(),
-      category: newItemCategory,
-      kind: newItemKind,
-      pricePaisa: BigInt(Math.round(priceNum * 100)),
-      costPricePaisa: BigInt(Math.round(costNum * 100)),
-      currentStock: stockNum,
-      minStockAlert: 10,
-      icon: newItemIcon || "📄",
+    const newHeld: HeldOrder = {
+      id: `hold-${Date.now()}`,
+      heldAt: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      time: timeStr,
+      customerName: customerName.trim() || "Walk-in Customer",
+      customerPhone: customerPhone.trim(),
+      items: [...cart],
+      discountRupees,
+      subtotalPaisa,
+      totalPaisa: payableTotalPaisa,
     };
 
-    onAddCatalogItem(item);
-    syncCatalogItemToCloud(item);
+    setHeldOrders((prev) => [newHeld, ...prev]);
+    clearCart();
+  };
 
-    // Reset Form
-    setNewItemName("");
-    setNewItemPrice("");
-    setNewItemCost("");
-    setNewItemStock("999");
-    setIsAddItemModalOpen(false);
+  // --- RESUME HELD ORDER ---
+  const handleResumeOrder = (held: HeldOrder) => {
+    if (cart.length > 0) {
+      const confirmSwap = window.confirm(
+        "You have items in your current cart. Do you want to replace them with this held order?"
+      );
+      if (!confirmSwap) return;
+    }
+
+    setCart(held.items);
+    setCustomerName(held.customerName);
+    setCustomerPhone(held.customerPhone);
+    setDiscountRupees(held.discountRupees);
+    setHeldOrders((prev) => prev.filter((h) => h.id !== held.id));
+    setIsHeldOrdersModalOpen(false);
+  };
+
+  // --- DISCARD HELD ORDER ---
+  const handleDiscardHeldOrder = (id: string) => {
+    setHeldOrders((prev) => prev.filter((h) => h.id !== id));
+  };
+
+  // Save Form (Add or Edit)
+  const handleSaveItemForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) return;
+
+    const priceNum = parseFloat(formPrice) || 0;
+    const costNum = parseFloat(formCost) || 0;
+    const stockNum = parseInt(formStock, 10) || 999;
+
+    if (editingItem) {
+      // Edit existing item
+      const updated: CatalogItem = {
+        ...editingItem,
+        name: formName.trim(),
+        category: formCategory,
+        kind: formKind,
+        pricePaisa: BigInt(Math.round(priceNum * 100)),
+        costPricePaisa: BigInt(Math.round(costNum * 100)),
+        currentStock: stockNum,
+        icon: formIcon || "📄",
+      };
+      onEditCatalogItem(updated);
+      syncCatalogItemToCloud(updated);
+      setEditingItem(null);
+    } else {
+      // Create new item
+      const newItem: CatalogItem = {
+        id: `cat-${Date.now()}`,
+        name: formName.trim(),
+        category: formCategory,
+        kind: formKind,
+        pricePaisa: BigInt(Math.round(priceNum * 100)),
+        costPricePaisa: BigInt(Math.round(costNum * 100)),
+        currentStock: stockNum,
+        minStockAlert: 10,
+        icon: formIcon || "📄",
+      };
+      onAddCatalogItem(newItem);
+      syncCatalogItemToCloud(newItem);
+      setIsAddItemModalOpen(false);
+    }
   };
 
   // Complete Sale & Record Transaction
@@ -540,7 +700,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* 1. TOP HEADER & PROMINENT "+ ADD SERVICE / PRODUCT" BUTTON */}
+      {/* 1. TOP HEADER & CONTROLS BAR */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-5 rounded-2xl shadow-xs transition-colors">
         <div>
           <div className="flex items-center gap-2">
@@ -553,30 +713,43 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20">
               Module 01
             </span>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-              {catalogItems.length} Services in Catalog
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+              {catalogItems.length} Services Added
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Fast counter billing for Xerox, photo, document prints, and online services with thermal receipts & WhatsApp.
+            Fast counter billing with thermal receipts, WhatsApp dispatch, Hold order parking, and full catalog control.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          {catalogItems.length > 0 && onClearCatalog && (
+        <div className="flex items-center gap-2">
+          {/* Storage Information Chip */}
+          <button
+            type="button"
+            onClick={() => setIsCatalogManagerOpen(true)}
+            className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Manage all catalog items in a full table view"
+          >
+            <Database className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Manage Catalog ({catalogItems.length})</span>
+          </button>
+
+          {/* Held Orders Button with Pulse Badge */}
+          {heldOrders.length > 0 && (
             <button
               type="button"
-              onClick={onClearCatalog}
-              className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold text-xs transition cursor-pointer"
-              title="Delete all items from catalog"
+              onClick={() => setIsHeldOrdersModalOpen(true)}
+              className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer animate-pulse"
             >
-              Clear Catalog
+              <PauseCircle className="w-3.5 h-3.5 text-amber-500" />
+              <span>Held Orders ({heldOrders.length})</span>
             </button>
           )}
 
+          {/* Primary "+ Add Service / Product" Button */}
           <button
             type="button"
-            onClick={() => setIsAddItemModalOpen(true)}
+            onClick={handleOpenAddModal}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -585,26 +758,59 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         </div>
       </div>
 
-      {/* 2. MAIN 2-COLUMN DESK: CATALOG GRID (LEFT) + BILLING CART (RIGHT) */}
+      {/* 2. MAIN 2-COLUMN DESK: CATALOG GRID/LIST (LEFT) + BILLING CART (RIGHT) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ================================================================= */}
-        {/* LEFT SECTION: CATALOG & MULTIPLIERS (7 Cols)                      */}
+        {/* LEFT SECTION: CATALOG WITH VIEW TOGGLE (7 Cols)                   */}
         {/* ================================================================= */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Search & Category Pills (Only if items exist) */}
+          {/* Search, Category Filters, and Grid / List Switch */}
           {catalogItems.length > 0 && (
             <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 p-4 rounded-2xl shadow-xs space-y-3">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search your services..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search services or products..."
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                {/* Grid / List View Toggle */}
+                <div className="flex items-center border border-slate-200 dark:border-slate-600 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-700 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleViewMode("grid")}
+                    title="Grid View"
+                    className={`p-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                      viewMode === "grid"
+                        ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline text-[10px]">Grid</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleViewMode("list")}
+                    title="List View"
+                    className={`p-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                      viewMode === "list"
+                        ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline text-[10px]">List</span>
+                  </button>
+                </div>
               </div>
 
+              {/* Category Filter Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {CATEGORIES.map((cat) => (
                   <button
@@ -624,11 +830,11 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             </div>
           )}
 
-          {/* Catalog Items Grid: Completely Clean When Empty */}
+          {/* Catalog Render: Empty State vs Grid vs List */}
           {catalogItems.length === 0 ? (
-            /* Clean Empty State: 100% No Preloaded Data */
+            /* Clean Empty State: 100% Zero Preloaded Data with Clear + Add Option */
             <div className="bg-white/95 dark:bg-slate-800/90 border-2 border-dashed border-emerald-300 dark:border-emerald-700/60 p-12 rounded-3xl text-center space-y-4 shadow-xs">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-3xl shadow-xs">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-3xl shadow-xs">
                 <Plus className="w-8 h-8" />
               </div>
               <div>
@@ -636,18 +842,18 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   No Services or Products in Catalog
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                  Your catalog is completely empty with zero preloaded items. Click the button below to add your services (e.g. Xerox, Printing, Photos, Online Form) with your exact prices.
+                  Zero preloaded data. Use the option below to add your exact services (e.g. Xerox, Printing, Photos, Online Forms) with your custom pricing.
                 </p>
               </div>
 
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsAddItemModalOpen(true)}
+                  onClick={handleOpenAddModal}
                   className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-600/25 flex items-center gap-2 mx-auto cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>+ Add Service / Product</span>
+                  <span>+ Add Your First Service / Product</span>
                 </button>
               </div>
             </div>
@@ -655,7 +861,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 p-8 rounded-2xl text-center text-xs text-slate-400">
               No services match "{searchQuery}" in "{selectedCategory}".
             </div>
-          ) : (
+          ) : viewMode === "grid" ? (
+            /* ============================================================= */
+            /* VIEW A: GRID VIEW (Vibrant Cards with Edit & Delete)          */
+            /* ============================================================= */
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {filteredItems.map((item) => {
                 const inCart = cart.find((c) => c.catalogId === item.id);
@@ -668,18 +877,32 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         : "bg-white/95 dark:bg-slate-800/90 border-slate-200/90 dark:border-slate-700/70 hover:border-emerald-300 dark:hover:border-emerald-700 shadow-xs"
                     }`}
                   >
-                    {/* Delete Item Button (Top Right) */}
-                    <button
-                      type="button"
-                      onClick={() => onDeleteCatalogItem(item.id)}
-                      title="Delete this service from catalog"
-                      className="absolute top-2.5 right-2.5 p-1 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer opacity-60 hover:opacity-100"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Action Buttons: Edit (✏️) and Delete (🗑️) */}
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-70 group-hover:opacity-100 transition">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(item)}
+                        title="Edit this service"
+                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete "${item.name}" from catalog?`)) {
+                            onDeleteCatalogItem(item.id);
+                          }
+                        }}
+                        title="Delete this service"
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
 
                     <div>
-                      <div className="flex items-start justify-between gap-2 pr-6">
+                      <div className="flex items-start justify-between gap-2 pr-14">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="text-xl p-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
                             {item.icon}
@@ -729,6 +952,81 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 );
               })}
             </div>
+          ) : (
+            /* ============================================================= */
+            /* VIEW B: LIST VIEW (High-density tabular rows)                  */
+            /* ============================================================= */
+            <div className="bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/70 rounded-2xl overflow-hidden shadow-xs divide-y divide-slate-100 dark:divide-slate-700/60">
+              {filteredItems.map((item) => {
+                const inCart = cart.find((c) => c.catalogId === item.id);
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-750/50 transition ${
+                      inCart ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""
+                    }`}
+                  >
+                    {/* Item Info */}
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span className="text-lg p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0">
+                        {item.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-black text-slate-900 dark:text-white truncate">
+                            {item.name}
+                          </p>
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                            {item.category}
+                          </span>
+                        </div>
+                        <span className="text-xs font-black font-mono text-emerald-600 dark:text-emerald-400">
+                          {formatPaisa(item.pricePaisa)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Quick Multipliers in List View */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {[1, 5, 25, 50].map((mult) => (
+                        <button
+                          key={mult}
+                          type="button"
+                          onClick={() => addToCart(item, mult)}
+                          className="px-2 py-1 rounded-md bg-slate-100 hover:bg-emerald-500 hover:text-white dark:bg-slate-700 dark:hover:bg-emerald-600 text-[10px] font-black font-mono text-slate-700 dark:text-slate-200 transition cursor-pointer"
+                        >
+                          +{mult}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Edit & Delete Actions */}
+                    <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-700 pl-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(item)}
+                        title="Edit service"
+                        className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete "${item.name}" from catalog?`)) {
+                            onDeleteCatalogItem(item.id);
+                          }
+                        }}
+                        title="Delete service"
+                        className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -743,15 +1041,31 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 Active Sale Order
               </h3>
             </div>
-            {cart.length > 0 && (
-              <button
-                type="button"
-                onClick={clearCart}
-                className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
-              >
-                Clear Cart
-              </button>
-            )}
+
+            <div className="flex items-center gap-2">
+              {/* HOLD CART BUTTON */}
+              {cart.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleHoldOrder}
+                  title="Suspend & hold this order to serve next customer"
+                  className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <PauseCircle className="w-3 h-3 text-amber-500" />
+                  <span>Hold Cart</span>
+                </button>
+              )}
+
+              {cart.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearCart}
+                  className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Customer Input */}
@@ -983,28 +1297,31 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       </div>
 
       {/* ===================================================================== */}
-      {/* 3. MODAL: ADD CUSTOM SERVICE / PRODUCT                                */}
+      {/* 3. MODAL: ADD OR EDIT SERVICE / PRODUCT                               */}
       {/* ===================================================================== */}
-      {isAddItemModalOpen && (
+      {(isAddItemModalOpen || editingItem) && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
               <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                  <Plus className="w-4 h-4" />
+                  {editingItem ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                 </span>
-                Add Service / Product to Catalog
+                {editingItem ? `Edit "${editingItem.name}"` : "Add Service / Product to Catalog"}
               </h3>
               <button
                 type="button"
-                onClick={() => setIsAddItemModalOpen(false)}
+                onClick={() => {
+                  setIsAddItemModalOpen(false);
+                  setEditingItem(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveCustomItem} className="space-y-3.5">
+            <form onSubmit={handleSaveItemForm} className="space-y-3.5">
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Service / Product Name *
@@ -1014,8 +1331,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   required
                   autoFocus
                   placeholder="e.g. Xerox B&W, Color Print, Aadhaar PVC, Lamination"
-                  value={newItemName}
-                  onChange={(e) => setNewItemName(e.target.value)}
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -1026,8 +1343,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     Kind
                   </label>
                   <select
-                    value={newItemKind}
-                    onChange={(e) => setNewItemKind(e.target.value as ItemKind)}
+                    value={formKind}
+                    onChange={(e) => setFormKind(e.target.value as ItemKind)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
                     <option value="SERVICE">Service (Print, Xerox, Form)</option>
@@ -1040,8 +1357,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     Category
                   </label>
                   <select
-                    value={newItemCategory}
-                    onChange={(e) => setNewItemCategory(e.target.value)}
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
                     <option value="Xerox & Print">Xerox & Print</option>
@@ -1064,8 +1381,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     step="0.25"
                     required
                     placeholder="e.g. 2.00"
-                    value={newItemPrice}
-                    onChange={(e) => setNewItemPrice(e.target.value)}
+                    value={formPrice}
+                    onChange={(e) => setFormPrice(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white"
                   />
                 </div>
@@ -1078,8 +1395,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     type="number"
                     step="0.1"
                     placeholder="e.g. 0.50"
-                    value={newItemCost}
-                    onChange={(e) => setNewItemCost(e.target.value)}
+                    value={formCost}
+                    onChange={(e) => setFormCost(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 dark:text-white"
                   />
                 </div>
@@ -1094,9 +1411,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     <button
                       key={emoji}
                       type="button"
-                      onClick={() => setNewItemIcon(emoji)}
+                      onClick={() => setFormIcon(emoji)}
                       className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg transition cursor-pointer ${
-                        newItemIcon === emoji
+                        formIcon === emoji
                           ? "bg-emerald-500 text-white shadow-xs scale-110"
                           : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
                       }`}
@@ -1110,7 +1427,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
                 <button
                   type="button"
-                  onClick={() => setIsAddItemModalOpen(false)}
+                  onClick={() => {
+                    setIsAddItemModalOpen(false);
+                    setEditingItem(null);
+                  }}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
                 >
                   Cancel
@@ -1119,7 +1439,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/25 cursor-pointer"
                 >
-                  Save & Add to Catalog
+                  {editingItem ? "Save Changes" : "Save & Add to Catalog"}
                 </button>
               </div>
             </form>
@@ -1128,7 +1448,229 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       )}
 
       {/* ===================================================================== */}
-      {/* 4. MODAL: POST-SALE RECEIPT & MULTI-CHANNEL DISPATCH                 */}
+      {/* 4. MODAL: HELD ORDERS DRAWER (PARKED CARTS)                          */}
+      {/* ===================================================================== */}
+      {isHeldOrdersModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-lg bg-amber-500/10 text-amber-600">
+                  <PauseCircle className="w-4 h-4" />
+                </span>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                  Held Orders Parking Lot ({heldOrders.length})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHeldOrdersModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {heldOrders.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400">
+                No orders are currently held on pause.
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                {heldOrders.map((h) => (
+                  <div
+                    key={h.id}
+                    className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                          {h.customerName}
+                        </span>
+                        {h.customerPhone && (
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            ({h.customerPhone})
+                          </span>
+                        )}
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded-md font-medium">
+                          Held at {h.heldAt}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate">
+                        {h.items.map((i) => `${i.name} (x${i.quantity})`).join(", ")}
+                      </p>
+                      <span className="text-xs font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                        Total: {formatPaisa(h.totalPaisa)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleResumeOrder(h)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <PlayCircle className="w-3.5 h-3.5" />
+                        <span>Resume</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDiscardHeldOrder(h.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                        title="Discard held order"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* 5. MODAL: COMPREHENSIVE CATALOG MANAGER TABLE                         */}
+      {/* ===================================================================== */}
+      {isCatalogManagerOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-lg bg-indigo-500/10 text-indigo-600">
+                  <Database className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                    Catalog Storage & Item Manager
+                  </h3>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    💾 Stored in local storage (<code className="font-mono text-emerald-600">dc_user_catalog</code>) & synced to Supabase (<code className="font-mono text-indigo-600">catalog_items</code>).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {catalogItems.length > 0 && onClearCatalog && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to delete ALL catalog items?")) {
+                        onClearCatalog();
+                        setIsCatalogManagerOpen(false);
+                      }
+                    }}
+                    className="px-2.5 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsCatalogManagerOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Table of all items */}
+            <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl">
+              {catalogItems.length === 0 ? (
+                <div className="p-12 text-center text-xs text-slate-400">
+                  Catalog is completely empty. Click "+ Add Service / Product" to create your first item.
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-750 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sticky top-0">
+                    <tr>
+                      <th className="p-3">Service / Product</th>
+                      <th className="p-3">Category</th>
+                      <th className="p-3 text-right">Sale Price</th>
+                      <th className="p-3 text-right">Cost Price</th>
+                      <th className="p-3 text-center">Margin</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700 font-medium">
+                    {catalogItems.map((item) => {
+                      const price = Number(item.pricePaisa);
+                      const cost = Number(item.costPricePaisa);
+                      const marginPct = price > 0 ? Math.round(((price - cost) / price) * 100) : 0;
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-750/50">
+                          <td className="p-3 flex items-center gap-2">
+                            <span>{item.icon}</span>
+                            <span className="font-bold text-slate-900 dark:text-white">{item.name}</span>
+                          </td>
+                          <td className="p-3 text-slate-500">{item.category}</td>
+                          <td className="p-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {formatPaisa(item.pricePaisa)}
+                          </td>
+                          <td className="p-3 text-right font-mono text-slate-500">
+                            {formatPaisa(item.costPricePaisa)}
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                              {marginPct}%
+                            </span>
+                          </td>
+                          <td className="p-3 text-right space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCatalogManagerOpen(false);
+                                handleOpenEditModal(item);
+                              }}
+                              className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer"
+                              title="Edit item"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Delete "${item.name}" from catalog?`)) {
+                                  onDeleteCatalogItem(item.id);
+                                }
+                              }}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                              title="Delete item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-2 shrink-0">
+              <span className="text-[11px] text-slate-500">
+                Total items: <strong className="text-slate-900 dark:text-white">{catalogItems.length}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCatalogManagerOpen(false);
+                  handleOpenAddModal();
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
+              >
+                + Add Another Service
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* 6. MODAL: POST-SALE RECEIPT & MULTI-CHANNEL DISPATCH                 */}
       {/* ===================================================================== */}
       {completedInvoice && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in zoom-in-95 duration-150">

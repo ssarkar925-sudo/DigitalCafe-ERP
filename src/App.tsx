@@ -340,6 +340,22 @@ export function App() {
     showToast(`✓ Added "${item.name}" to Catalog (${formatPaisa(item.pricePaisa)})`);
   };
 
+  const handleEditCatalogItem = (updatedItem: CatalogItem) => {
+    setCatalogItems((prev) => {
+      const updated = prev.map((item) => (item.id === updatedItem.id ? updatedItem : item));
+      try {
+        const toSave = updated.map((i) => ({
+          ...i,
+          pricePaisa: i.pricePaisa.toString(),
+          costPricePaisa: i.costPricePaisa.toString(),
+        }));
+        localStorage.setItem("dc_user_catalog", JSON.stringify(toSave));
+      } catch (e) {}
+      return updated;
+    });
+    showToast(`✓ Updated "${updatedItem.name}" in Catalog`);
+  };
+
   const handleDeleteCatalogItem = (id: string) => {
     setCatalogItems((prev) => {
       const updated = prev.filter((i) => i.id !== id);
@@ -415,6 +431,7 @@ export function App() {
           <PosTerminal
             catalogItems={catalogItems}
             onAddCatalogItem={handleAddCatalogItem}
+            onEditCatalogItem={handleEditCatalogItem}
             onDeleteCatalogItem={handleDeleteCatalogItem}
             onClearCatalog={handleClearCatalog}
             customers={customers}
