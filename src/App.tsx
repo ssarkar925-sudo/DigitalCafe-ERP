@@ -51,7 +51,6 @@ export function App() {
         new Date().toLocaleTimeString("en-IN", {
           hour: "2-digit",
           minute: "2-digit",
-          second: "2-digit",
           hour12: true,
         })
       );
@@ -228,103 +227,160 @@ export function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 flex font-sans transition-colors duration-200">
       {/* ==================================================================== */}
-      {/* 1. SIDEBAR (All Balances, Move Money, and Navigation live here!)     */}
+      {/* 1. CLEAN PREMIUM FINTECH SIDEBAR                                     */}
       {/* ==================================================================== */}
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         isDark={isDark}
         onToggleTheme={toggleTheme}
-        cashDrawerPaisa={cashAccount.currentBalancePaisa}
-        bankTotalPaisa={totalBankPaisa}
-        qrTotalPaisa={totalQrPaisa}
-        portalFloatTotalPaisa={totalPortalFloatPaisa}
-        khataDueTotalPaisa={totalKhataDuePaisa}
-        timeStr={timeStr}
         isCloudSynced={!!supabase}
         onOpenMoveMoney={() => setIsMoveOpen(true)}
       />
 
       {/* ==================================================================== */}
-      {/* 2. MAIN APPLICATION WORKSPACE (NO TOPBAR, NO DASHBOARD HEADER!)       */}
-      {/*    100% full height dedicated content area                           */}
+      {/* 2. MAIN APPLICATION WORKSPACE AREA                                   */}
       {/* ==================================================================== */}
-      <main className="flex-1 min-w-0 h-screen overflow-y-auto p-6 transition-colors">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        {/* SLIM, REFINED LIQUIDITY STATUS STRIP (Compact, Elegant, Non-Intrusive) */}
+        <header className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b border-slate-200/80 dark:border-zinc-850 px-6 py-2.5 flex items-center justify-between gap-4 sticky top-0 z-20 transition-colors">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xs font-black tracking-tight uppercase text-slate-800 dark:text-zinc-200 flex items-center gap-2">
+              {activeTab === "pos" && "⚡ Express Counter POS"}
+              {activeTab === "csp" && "🏧 Biometric CSP (AEPS • DMT • Cash Out)"}
+              {activeTab === "bbps" && "⚡ Recharges & BBPS Utility Hub"}
+              {activeTab === "khata_stock" && "👥 Customer Khata & Consumables Stock"}
+              {activeTab === "accounts" && "🏦 Cash Drawer, Accounts & P&L"}
+              {activeTab === "settings" && "⚙️ System Settings & Preferences"}
+            </h2>
+          </div>
+
+          {/* SLEEK 5-METRIC CHIP STRIP */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar text-[11px] font-mono">
+            {/* Drawer */}
+            <div className="bg-slate-100/80 dark:bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
+              <span className="text-slate-400 dark:text-zinc-500 font-sans text-[10px] font-bold">DRAWER</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                {formatPaisa(cashAccount.currentBalancePaisa)}
+              </span>
+            </div>
+
+            {/* Banks */}
+            <div className="bg-slate-100/80 dark:bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
+              <span className="text-slate-400 dark:text-zinc-500 font-sans text-[10px] font-bold">BANKS</span>
+              <span className="font-bold text-sky-600 dark:text-sky-400">
+                {formatPaisa(totalBankPaisa)}
+              </span>
+            </div>
+
+            {/* UPI QR */}
+            <div className="bg-slate-100/80 dark:bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
+              <span className="text-slate-400 dark:text-zinc-500 font-sans text-[10px] font-bold">QR</span>
+              <span className="font-bold text-purple-600 dark:text-purple-400">
+                {formatPaisa(totalQrPaisa)}
+              </span>
+            </div>
+
+            {/* Portal Floats */}
+            <div className="bg-slate-100/80 dark:bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
+              <span className="text-slate-400 dark:text-zinc-500 font-sans text-[10px] font-bold">FLOATS</span>
+              <span className="font-bold text-amber-600 dark:text-amber-400">
+                {formatPaisa(totalPortalFloatPaisa)}
+              </span>
+            </div>
+
+            {/* Khata Due */}
+            <div className="bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-900/60 flex items-center gap-1.5">
+              <span className="text-rose-500 font-sans text-[10px] font-bold">KHATA DUE</span>
+              <span className="font-black text-rose-600 dark:text-rose-300">
+                {formatPaisa(totalKhataDuePaisa)}
+              </span>
+            </div>
+
+            {/* Clock */}
+            <div className="hidden xl:flex items-center pl-2 text-slate-400 dark:text-zinc-500 font-bold text-[10px]">
+              {timeStr}
+            </div>
+          </div>
+        </header>
+
         {/* TOAST NOTICE */}
         {toastNotice && (
-          <div className="mb-4 bg-emerald-600 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-150 flex items-center justify-between">
+          <div className="mx-6 mt-4 bg-emerald-600 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-150 flex items-center justify-between">
             <span>{toastNotice}</span>
             <button
               type="button"
               onClick={() => setToastNotice(null)}
-              className="text-white/80 hover:text-white font-bold ml-4 cursor-pointer"
+              className="text-white/80 hover:text-white font-bold cursor-pointer"
             >
               ✕
             </button>
           </div>
         )}
 
-        {/* ACTIVE MODULE CONTAINER (Immediate Full-Height Workspace) */}
-        {activeTab === "pos" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">⚡</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 1: Express Counter POS</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
-              Ready for Phase 4: Service tiles, PDF receipt downloads, thermal printing, and catalog manager.
-            </p>
-          </div>
-        )}
+        {/* WORKSPACE VIEW CONTAINER */}
+        <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
+          {activeTab === "pos" && (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+              <span className="text-4xl block mb-2">⚡</span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Module 1: Express Counter POS</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+                Ready for Phase 4: Service tiles, PDF receipt downloads, thermal printing, and catalog manager.
+              </p>
+            </div>
+          )}
 
-        {activeTab === "csp" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">🏧</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 2: Biometric CSP Kiosk</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
-              AEPS, DMT, and UPI Cash Out with passbook statement calculations and 4 fee collection modes.
-            </p>
-          </div>
-        )}
+          {activeTab === "csp" && (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+              <span className="text-4xl block mb-2">🏧</span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Module 2: Biometric CSP Kiosk</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+                AEPS, DMT, and UPI Cash Out with passbook statement calculations and 4 fee collection modes.
+              </p>
+            </div>
+          )}
 
-        {activeTab === "bbps" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">⚡</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 3: Recharges, BBPS & Utility Hub</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
-              Mobile/DTH, WBSEDCL electricity bills, Fastag, and Google Play voucher record-keeping.
-            </p>
-          </div>
-        )}
+          {activeTab === "bbps" && (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+              <span className="text-4xl block mb-2">⚡</span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Module 3: Recharges, BBPS & Utility Hub</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+                Mobile/DTH, WBSEDCL electricity bills, Fastag, and Google Play voucher record-keeping.
+              </p>
+            </div>
+          )}
 
-        {activeTab === "khata_stock" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">👥</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 4: Customer Khata & Consumables Stock</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
-              Customer udhaar credit ledger + wholesale consumables purchase & stock tracking.
-            </p>
-          </div>
-        )}
+          {activeTab === "khata_stock" && (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+              <span className="text-4xl block mb-2">👥</span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Module 4: Customer Khata & Consumables Stock</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+                Customer udhaar credit ledger + wholesale consumables purchase & stock tracking.
+              </p>
+            </div>
+          )}
 
-        {activeTab === "accounts" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">🏦</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 5: Cash Drawer & Accounts Hub</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
-              Daily Cash Book, physical note denomination counter, Section 194N tracker, and P&L.
-            </p>
-          </div>
-        )}
+          {activeTab === "accounts" && (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+              <span className="text-4xl block mb-2">🏦</span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Module 5: Cash Drawer & Accounts Hub</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+                Daily Cash Book, physical note denomination counter, Section 194N tracker, and P&L.
+              </p>
+            </div>
+          )}
 
-        {activeTab === "settings" && (
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">⚙️</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 6: Settings & Backup</h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
-              Shop profile, accounts manager, printer configurations, and local backup.
-            </p>
-          </div>
-        )}
-      </main>
+          {activeTab === "settings" && (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+              <span className="text-4xl block mb-2">⚙️</span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Module 6: Settings & Backup</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+                Shop profile, accounts manager, printer configurations, and local backup.
+              </p>
+            </div>
+          )}
+        </main>
+      </div>
 
       {/* ==================================================================== */}
       {/* UNIVERSAL CONTRA MOVE MONEY MODAL                                    */}
