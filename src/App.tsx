@@ -22,6 +22,7 @@ import { Sidebar } from "./components/Sidebar";
 import { DashboardOverview } from "./components/DashboardOverview";
 import { PosTerminal } from "./components/PosTerminal";
 import { AccountManagerModal } from "./components/AccountManagerModal";
+import { CspKiosk } from "./components/CspKiosk";
 import { ArrowLeftRight, Landmark } from "lucide-react";
 
 export type NavTab = "dashboard" | "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
@@ -216,6 +217,41 @@ export function App() {
       localStorage.setItem("dc_user_cashbook", JSON.stringify(serializable));
     } catch (e) {}
   }, [cashBookEntries]);
+
+  // 6. Digital Transactions (AEPS, DMT, UPI Cash Out)
+  const [digitalTransactions, setDigitalTransactions] = useState<DigitalTransaction[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_csp_transactions");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((t: any) => ({
+            ...t,
+            amountPaisa: BigInt(t.amountPaisa || 0),
+            customerFeePaisa: BigInt(t.customerFeePaisa || 0),
+            portalCommissionPaisa: BigInt(t.portalCommissionPaisa || 0),
+            portalSurchargePaisa: BigInt(t.portalSurchargePaisa || 0),
+            netProfitPaisa: BigInt(t.netProfitPaisa || 0),
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      const serializable = digitalTransactions.map((t) => ({
+        ...t,
+        amountPaisa: t.amountPaisa.toString(),
+        customerFeePaisa: t.customerFeePaisa.toString(),
+        portalCommissionPaisa: t.portalCommissionPaisa.toString(),
+        portalSurchargePaisa: t.portalSurchargePaisa.toString(),
+        netProfitPaisa: t.netProfitPaisa.toString(),
+      }));
+      localStorage.setItem("dc_csp_transactions", JSON.stringify(serializable));
+    } catch (e) {}
+  }, [digitalTransactions]);
 
   const [creditCards] = useState<CreditCardItem[]>(INITIAL_CREDIT_CARDS);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
@@ -596,6 +632,100 @@ export function App() {
     showToast(`✓ Voided invoice #${inv.invoiceNumber} and reversed all balances.`);
   };
 
+  // Digital CSP Transaction Handlers
+  const handleRecordDigitalTransaction = ({
+    transaction,
+    journal,
+    cashDeltaPaisa,
+    sourceDeltaPaisa,
+    customerPhone,
+  }: {
+    transaction: DigitalTransaction;
+    journal: JournalEntry;
+    cashDeltaPaisa: bigint;
+    sourceDeltaPaisa: bigint;
+    portalDeltaPaisa: bigint;
+    customerPhone?: string;
+  }) => {
+    // 1. Digital transactions
+    setDigitalTransactions((prev) => [transaction, ...prev]);
+
+    // 2. Journal Entries
+    setJournalEntries((prev) => [journal, ...prev]);
+
+    // 3. Update accounts
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === cashAccount.id && cashDeltaPaisa !== 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + cashDeltaPaisa };
+        }
+        if (acc.id === transaction.sourceAccountId && sourceDeltaPaisa !== 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + sourceDeltaPaisa };
+        }
+        return acc;
+      })
+    );
+
+    // 4. Update Cash Book if physical cash moved
+    if (cashDeltaPaisa !== 0n) {
+      const isCashIn = cashDeltaPaisa > 0n;
+      const absAmount = isCashIn ? cashDeltaPaisa : -cashDeltaPaisa;
+      setCashBookEntries((prev) => [
+        {
+          id: `cb-${Date.now()}`,
+          date: transaction.date,
+          time: transaction.time,
+          description: `${transaction.serviceType} Banking #${transaction.id} (${transaction.beneficiaryDetails || ""})`,
+          type: isCashIn ? "IN" : "OUT",
+          amountPaisa: absAmount,
+          runningBalancePaisa: cashAccount.currentBalancePaisa + cashDeltaPaisa,
+          category:
+            transaction.serviceType === "AEPS"
+              ? "AEPS_PAYOUT"
+              : transaction.serviceType === "DMT"
+              ? "DMT_CASH_IN"
+              : "UPI_CASHOUT_PAYOUT",
+          referenceId: transaction.id,
+        },
+        ...prev,
+      ]);
+    }
+
+    // 5. Update Khata if fee added to khata
+    if (transaction.feeCollectionMode === "KHATA" && transaction.customerFeePaisa > 0n) {
+      setCustomers((prev) => {
+        const existing = prev.find(
+          (c) => (customerPhone && c.phone === customerPhone)
+        );
+        if (existing) {
+          return prev.map((c) =>
+            c.id === existing.id
+              ? { ...c, currentDuePaisa: c.currentDuePaisa + transaction.customerFeePaisa }
+              : c
+          );
+        } else {
+          return [
+            ...prev,
+            {
+              id: `cust-${Date.now()}`,
+              name: `CSP Customer (${customerPhone || "Mobile"})`,
+              phone: customerPhone || "",
+              currentDuePaisa: transaction.customerFeePaisa,
+              creditLimitPaisa: 200000n,
+            },
+          ];
+        }
+      });
+    }
+
+    showToast(`✓ ${transaction.serviceType} #${transaction.id} Recorded (${formatPaisa(transaction.amountPaisa)})`);
+  };
+
+  const handleVoidDigitalTransaction = (txnId: string) => {
+    setDigitalTransactions((prev) => prev.filter((t) => t.id !== txnId));
+    showToast(`✓ Voided banking transaction #${txnId}`);
+  };
+
   // Catalog Item Handlers
   const handleAddCatalogItem = (item: CatalogItem) => {
     setCatalogItems((prev) => {
@@ -719,13 +849,13 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 2 CSP */}
         {activeTab === "csp" && (
-          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">🏧</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 2: Biometric CSP Kiosk</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-              AEPS, DMT, and UPI Cash Out with passbook statement calculations and 4 fee collection modes.
-            </p>
-          </div>
+          <CspKiosk
+            accounts={accounts}
+            customers={customers}
+            timeStr={timeStr}
+            onRecordDigitalTransaction={handleRecordDigitalTransaction}
+            onVoidDigitalTransaction={handleVoidDigitalTransaction}
+          />
         )}
 
         {/* WORKSPACE VIEW: MODULE 3 BBPS */}
