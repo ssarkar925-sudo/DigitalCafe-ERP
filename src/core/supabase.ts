@@ -127,6 +127,31 @@ export async function fetchLiveCatalogItems(): Promise<CatalogItem[]> {
 }
 
 /**
+ * Sync catalog item to Supabase
+ */
+export async function syncCatalogItemToCloud(item: CatalogItem): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { error } = await supabase.from("catalog_items").upsert({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      kind: item.kind,
+      price_paisa: item.pricePaisa.toString(),
+      cost_price_paisa: item.costPricePaisa.toString(),
+      current_stock: item.currentStock,
+      min_stock_alert: item.minStockAlert,
+      hotkey: item.hotkey || null,
+      icon: item.icon || "📄",
+    });
+    return !error;
+  } catch (err) {
+    console.warn("[Supabase] Failed to sync catalog item:", err);
+    return false;
+  }
+}
+
+/**
  * Sync invoice to Supabase
  */
 export async function syncInvoiceToCloud(invoice: InvoiceRecord): Promise<boolean> {

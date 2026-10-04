@@ -21,6 +21,7 @@ import {
 } from "./core/supabase";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardOverview } from "./components/DashboardOverview";
+import { PosTerminal } from "./components/PosTerminal";
 
 export type NavTab = "dashboard" | "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
 
@@ -228,6 +229,94 @@ export function App() {
     showToast(`✓ Moved ${formatPaisa(parsedPaisa)} from ${fromAcc.name} ➔ ${toAcc.name}`);
   };
 
+  // Handle POS Counter Sale Record
+  const handleRecordPosSale = ({
+    invoice,
+    journal,
+    cashDeltaPaisa,
+    qrDeltaPaisa,
+    khataDeltaPaisa,
+    customerPhone,
+  }: {
+    invoice: InvoiceRecord;
+    journal: JournalEntry;
+    cashDeltaPaisa: bigint;
+    qrDeltaPaisa: bigint;
+    khataDeltaPaisa: bigint;
+    customerPhone?: string;
+  }) => {
+    // 1. Invoices
+    setInvoices((prev) => [invoice, ...prev]);
+
+    // 2. Journal Entries
+    setJournalEntries((prev) => [journal, ...prev]);
+
+    // 3. Update accounts
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.type === "CASH" && cashDeltaPaisa > 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + cashDeltaPaisa };
+        }
+        if (acc.type === "UPI_HOLDING" && qrDeltaPaisa > 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + qrDeltaPaisa };
+        }
+        return acc;
+      })
+    );
+
+    // 4. If Cash Tendered, write to Cash Book
+    if (cashDeltaPaisa > 0n) {
+      setCashBookEntries((prev) => [
+        {
+          id: `cb-${Date.now()}`,
+          date: invoice.date,
+          time: invoice.time,
+          description: `Counter POS #${invoice.invoiceNumber} (${invoice.items.map((i) => i.name).join(", ")})`,
+          type: "IN",
+          amountPaisa: cashDeltaPaisa,
+          runningBalancePaisa: cashAccount.currentBalancePaisa + cashDeltaPaisa,
+          category: "POS_SALE",
+          referenceId: invoice.invoiceNumber,
+        },
+        ...prev,
+      ]);
+    }
+
+    // 5. If Khata, update or add customer due
+    if (khataDeltaPaisa > 0n) {
+      setCustomers((prev) => {
+        const existing = prev.find(
+          (c) => (customerPhone && c.phone === customerPhone) || c.name === invoice.customerName
+        );
+        if (existing) {
+          return prev.map((c) =>
+            c.id === existing.id
+              ? { ...c, currentDuePaisa: c.currentDuePaisa + khataDeltaPaisa }
+              : c
+          );
+        } else {
+          return [
+            ...prev,
+            {
+              id: `cust-${Date.now()}`,
+              name: invoice.customerName,
+              phone: customerPhone || "",
+              currentDuePaisa: khataDeltaPaisa,
+              creditLimitPaisa: 200000n,
+            },
+          ];
+        }
+      });
+    }
+
+    showToast(`✓ Sale #${invoice.invoiceNumber} Completed (${formatPaisa(invoice.totalPaisa)})`);
+  };
+
+  const handleAddCatalogItem = (item: CatalogItem) => {
+    setCatalogItems((prev) => [item, ...prev]);
+    showToast(`✓ Added "${item.name}" to Catalog (${formatPaisa(item.pricePaisa)})`);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100/70 dark:bg-slate-900 text-slate-900 dark:text-slate-100 flex font-sans transition-colors duration-200">
       {/* ==================================================================== */}
@@ -275,13 +364,14 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 1 POS */}
         {activeTab === "pos" && (
-          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">⚡</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 1: Express Counter POS</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-              Ready for Phase 4: Service tiles, PDF receipt downloads, thermal printing, and catalog manager.
-            </p>
-          </div>
+          <PosTerminal
+            catalogItems={catalogItems}
+            onAddCatalogItem={handleAddCatalogItem}
+            customers={customers}
+            accounts={accounts}
+            onRecordSale={handleRecordPosSale}
+            timeStr={timeStr}
+          />
         )}
 
         {/* WORKSPACE VIEW: MODULE 2 CSP */}
