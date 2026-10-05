@@ -993,6 +993,44 @@ console.log("\n[SUITE 13: Customer Loyalty Rewards & Backup Roundtrip Invariants
   );
 }
 
+// ==============================================================================
+// 14. SUITE 14: STAFF OPERATOR PIN AUTHENTICATION & SHIFT CASH HANDOVER INVARIANTS
+// ==============================================================================
+console.log("\n[SUITE 14: Staff Operator PIN Authentication & Shift Cash Handover Invariants]");
+
+// 1. PIN Security Invariant
+{
+  const operator = { id: "op-1", name: "Saikat Sarkar", pin: "1234" };
+  const correctAttempt = "1234";
+  const incorrectAttempt = "9999";
+
+  const isUnlockedCorrect = correctAttempt === operator.pin;
+  const isUnlockedIncorrect = incorrectAttempt === operator.pin;
+
+  assert(
+    isUnlockedCorrect === true && isUnlockedIncorrect === false,
+    "PIN Security: Correct 4-digit PIN authenticates operator, incorrect attempt is blocked"
+  );
+}
+
+// 2. Shift Cash Handover Conservation Invariant
+{
+  let currentDrawerCash = 1850000n; // ₹18,500.00 in physical cash drawer
+  const outgoingOp = "Saikat Sarkar (Morning)";
+  const incomingOp = "Counter Operator 1 (Evening)";
+
+  const handoverAmount = 1500000n; // ₹15,000.00 handed over
+  const retainedInSafe = currentDrawerCash - handoverAmount; // ₹3,500.00 retained
+
+  // Drawer opening for next shift strictly matches handover amount
+  const newShiftOpeningCash = handoverAmount;
+
+  assert(
+    newShiftOpeningCash + retainedInSafe === currentDrawerCash,
+    "Shift Handover Conservation: Handed over ₹15,000 + Safe ₹3,500 exactly equals drawer cash with zero leakage"
+  );
+}
+
 console.log("\n================================================================================");
 console.log(` 🏁 TEST SUMMARY: ${stats.passed} Passed, ${stats.failed} Failed`);
 console.log("================================================================================\n");

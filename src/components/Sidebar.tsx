@@ -1,5 +1,5 @@
-import React from "react";
 import { NavTab } from "../App";
+import { StaffOperator } from "../core/contracts";
 import {
   LayoutDashboard,
   Zap,
@@ -11,6 +11,7 @@ import {
   Sun,
   Moon,
   CircleDot,
+  KeyRound,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -19,6 +20,8 @@ interface SidebarProps {
   isDark: boolean;
   onToggleTheme: () => void;
   isCloudSynced: boolean;
+  activeOperator: StaffOperator;
+  onSwitchOperator: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,6 +30,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isDark,
   onToggleTheme,
   isCloudSynced,
+  activeOperator,
+  onSwitchOperator,
 }) => {
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; hotkey?: string }[] = [
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4 text-emerald-500" />, hotkey: "Esc" },
@@ -101,16 +106,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* 3. FOOTER: USER & SYSTEM STATUS */}
       <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-black text-slate-700 dark:text-slate-200">
-              SS
+          <div
+            onClick={onSwitchOperator}
+            className="flex items-center gap-2.5 min-w-0 cursor-pointer p-1 -m-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 transition"
+            title="Switch Operator / Enter PIN"
+          >
+            <div className="w-8 h-8 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-black">
+              {activeOperator.name.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold text-slate-900 dark:text-white truncate leading-none">
-                Saikat Sarkar
+                {activeOperator.name}
               </p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-1">
-                Admin • Counter 01
+              <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 flex items-center gap-1">
+                <span>{activeOperator.role}</span>
+                <span className="text-emerald-500 font-bold">• PIN Switch 🔑</span>
               </p>
             </div>
           </div>

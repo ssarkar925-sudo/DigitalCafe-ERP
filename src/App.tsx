@@ -33,10 +33,13 @@ import {
   KhataSettlement,
   ShopProfile,
   HardwareConfig,
+  StaffOperator,
+  ShiftHandoverRecord,
+  DEFAULT_OPERATORS,
   DEFAULT_SHOP_PROFILE,
   DEFAULT_HARDWARE_CONFIG,
 } from "./core/contracts";
-import { ArrowLeftRight, Landmark } from "lucide-react";
+import { ArrowLeftRight, Landmark, User, KeyRound, Shield, LogOut } from "lucide-react";
 
 export type NavTab = "dashboard" | "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
 
@@ -319,6 +322,33 @@ export function App() {
       localStorage.setItem("dc_hardware_config", JSON.stringify(hardwareConfig));
     } catch (e) {}
   }, [hardwareConfig]);
+
+  // 8. Staff Operators & Cashier Shift State
+  const [operators, setOperators] = useState<StaffOperator[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_staff_operators");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_OPERATORS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("dc_staff_operators", JSON.stringify(operators));
+    } catch (e) {}
+  }, [operators]);
+
+  const [activeOperator, setActiveOperator] = useState<StaffOperator>(() => operators[0]);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pinTargetOperator, setPinTargetOperator] = useState<StaffOperator | null>(null);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+
+  // Shift Handover Modal State
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
+  const [handoverAmount, setHandoverAmount] = useState("");
+  const [handoverTargetId, setHandoverTargetId] = useState("");
+  const [handoverNotes, setHandoverNotes] = useState("");
 
   // Cloud Sync on Mount (only if Supabase has real live data)
   useEffect(() => {
@@ -1393,6 +1423,8 @@ export function App() {
         isDark={isDark}
         onToggleTheme={toggleTheme}
         isCloudSynced={!!supabase}
+        activeOperator={activeOperator}
+        onSwitchOperator={() => setIsPinModalOpen(true)}
       />
 
       {/* 2. MAIN WORKSPACE */}
@@ -1684,6 +1716,245 @@ export function App() {
         onDeleteAccount={handleDeleteAccount}
         formatPaisa={formatPaisa}
       />
+
+      {/* ==================================================================== */}
+      {/* OPERATOR PIN SWITCH MODAL                                            */}
+      {/* ==================================================================== */}
+      {isPinModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <KeyRound className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                    Counter Operator Access
+                  </h3>
+                  <p className="text-[10px] text-slate-400">Enter 4-digit PIN to switch operator</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPinModalOpen(false);
+                  setPinTargetOperator(null);
+                  setPinInput("");
+                  setPinError("");
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Operator Selection */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block">
+                Select Operator:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {operators.map((op) => (
+                  <button
+                    key={op.id}
+                    type="button"
+                    onClick={() => {
+                      setPinTargetOperator(op);
+                      setPinInput("");
+                      setPinError("");
+                    }}
+                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition ${
+                      (pinTargetOperator ? pinTargetOperator.id === op.id : activeOperator.id === op.id)
+                        ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    <div className="text-xs truncate">{op.name}</div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">{op.role}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* PIN Input */}
+            <div className="space-y-2 pt-1">
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block">
+                4-Digit Security PIN:
+              </label>
+              <input
+                type="password"
+                maxLength={4}
+                value={pinInput}
+                onChange={(e) => {
+                  setPinInput(e.target.value);
+                  setPinError("");
+                }}
+                placeholder="••••"
+                className="w-full text-center tracking-widest text-lg font-mono font-black py-2 rounded-xl bg-slate-50 dark:bg-slate-750 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:border-emerald-500"
+              />
+              {pinError && (
+                <p className="text-[11px] text-rose-500 font-bold text-center">{pinError}</p>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHandoverModalOpen(true);
+                  setIsPinModalOpen(false);
+                }}
+                className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-750 cursor-pointer"
+              >
+                Shift Handover
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = pinTargetOperator || activeOperator;
+                  if (target.pin && pinInput !== target.pin) {
+                    setPinError("Invalid PIN! Please check credentials.");
+                    return;
+                  }
+                  setActiveOperator(target);
+                  setIsPinModalOpen(false);
+                  setPinInput("");
+                  setPinError("");
+                  showToast(`✓ Switched counter operator to ${target.name}`);
+                }}
+                className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
+              >
+                Unlock Operator
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* SHIFT HANDOVER CASH LOG MODAL                                        */}
+      {/* ==================================================================== */}
+      {isHandoverModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <ArrowLeftRight className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                    Shift Cash Handover
+                  </h3>
+                  <p className="text-[10px] text-slate-400">Transfer cash drawer from {activeOperator.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHandoverModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Incoming Operator:
+                </label>
+                <select
+                  value={handoverTargetId}
+                  onChange={(e) => setHandoverTargetId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-750 text-slate-900 dark:text-white"
+                >
+                  <option value="">-- Select Next Shift Operator --</option>
+                  {operators
+                    .filter((op) => op.id !== activeOperator.id)
+                    .map((op) => (
+                      <option key={op.id} value={op.id}>
+                        {op.name} ({op.role})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Physical Cash Handed Over (₹):
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={handoverAmount}
+                  onChange={(e) => setHandoverAmount(e.target.value)}
+                  placeholder="e.g. 4500.00"
+                  className="w-full px-3 py-2 text-xs font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-750 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Notes / Handover Memo:
+                </label>
+                <input
+                  type="text"
+                  value={handoverNotes}
+                  onChange={(e) => setHandoverNotes(e.target.value)}
+                  placeholder="e.g. Morning shift completed, all tokens cleared"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-750 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setIsHandoverModalOpen(false)}
+                className="flex-1 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-750 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!handoverTargetId || !handoverAmount}
+                onClick={() => {
+                  const targetOp = operators.find((op) => op.id === handoverTargetId);
+                  if (!targetOp) return;
+                  const amtNum = parseFloat(handoverAmount) || 0;
+                  const handoverPaisa = BigInt(Math.round(amtNum * 100));
+
+                  // Log to Cash Book
+                  setCashBookEntries((prev) => [
+                    {
+                      id: `cb-${Date.now()}`,
+                      date: new Date().toISOString().split("T")[0],
+                      time: timeStr,
+                      description: `Shift Handover: ${activeOperator.name} ➔ ${targetOp.name} (${handoverNotes || "End of shift"})`,
+                      type: "IN",
+                      amountPaisa: handoverPaisa,
+                      runningBalancePaisa: cashAccount.currentBalancePaisa,
+                      category: "OPENING_BALANCE",
+                    },
+                    ...prev,
+                  ]);
+
+                  setActiveOperator(targetOp);
+                  setIsHandoverModalOpen(false);
+                  setHandoverAmount("");
+                  setHandoverNotes("");
+                  showToast(`✓ Shift handed over to ${targetOp.name} with ${formatPaisa(handoverPaisa)} cash.`);
+                }}
+                className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-amber-600/20 cursor-pointer"
+              >
+                Confirm Handover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

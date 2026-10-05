@@ -100,6 +100,7 @@ export interface InvoiceRecord {
   customerName: string;
   customerPhone?: string;
   customerGstin?: string;
+  operatorName?: string;
   items: InvoiceItem[];
   subtotalPaisa: bigint;
   discountPaisa: bigint;
@@ -266,6 +267,25 @@ export interface DayCloseAudit {
   notes?: string;
 }
 
+export interface StaffOperator {
+  id: string;
+  name: string;
+  role: "ADMIN" | "CASHIER" | "OPERATOR";
+  pin: string; // 4-digit PIN
+  phone?: string;
+  isActive: boolean;
+}
+
+export interface ShiftHandoverRecord {
+  id: string;
+  date: string;
+  time: string;
+  outgoingOperator: string;
+  incomingOperator: string;
+  handedOverCashPaisa: bigint;
+  notes?: string;
+}
+
 export interface ShopProfile {
   shopName: string;
   tagline: string;
@@ -284,6 +304,11 @@ export interface HardwareConfig {
   drawerKickCode: string;
   soundAlerts: boolean;
 }
+
+export const DEFAULT_OPERATORS: StaffOperator[] = [
+  { id: "op-1", name: "Saikat Sarkar (Owner)", role: "ADMIN", pin: "1234", isActive: true },
+  { id: "op-2", name: "Counter Operator 1", role: "CASHIER", pin: "0000", isActive: true },
+];
 
 export const DEFAULT_SHOP_PROFILE: ShopProfile = {
   shopName: "Sarkar Communication",
