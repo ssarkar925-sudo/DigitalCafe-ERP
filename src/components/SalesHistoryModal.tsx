@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { InvoiceRecord } from "../core/contracts";
+import { InvoiceRecord, ReturnRecord, ReturnItem } from "../core/contracts";
 import {
   Receipt,
   Search,
@@ -14,6 +14,7 @@ import {
   QrCode,
   Users,
   Layers,
+  RotateCcw,
 } from "lucide-react";
 
 interface SalesHistoryModalProps {
@@ -21,6 +22,7 @@ interface SalesHistoryModalProps {
   onClose: () => void;
   invoices: InvoiceRecord[];
   onVoidInvoice?: (invoiceId: string) => void;
+  onRecordReturn?: (params: { returnRecord: ReturnRecord; refundDeltaPaisa: bigint }) => void;
   onPrintThermal: (invoice: InvoiceRecord) => void;
   onDownloadPdf: (invoice: InvoiceRecord) => void;
   onWhatsApp: (invoice: InvoiceRecord) => void;
@@ -32,6 +34,7 @@ export const SalesHistoryModal: React.FC<SalesHistoryModalProps> = ({
   onClose,
   invoices,
   onVoidInvoice,
+  onRecordReturn,
   onPrintThermal,
   onDownloadPdf,
   onWhatsApp,
@@ -39,6 +42,12 @@ export const SalesHistoryModal: React.FC<SalesHistoryModalProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceRecord | null>(null);
+
+  // Return Processing State
+  const [returningInvoice, setReturningInvoice] = useState<InvoiceRecord | null>(null);
+  const [returnQtys, setReturnQtys] = useState<Record<string, number>>({});
+  const [refundMethod, setRefundMethod] = useState<"CASH" | "UPI">("CASH");
+  const [returnReason, setReturnReason] = useState("Customer requested item return");
 
   const filteredInvoices = useMemo(() => {
     if (!search.trim()) return invoices;
@@ -214,6 +223,29 @@ export const SalesHistoryModal: React.FC<SalesHistoryModalProps> = ({
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
                           </button>
+                          {onRecordReturn && !isVoid && inv.status !== "REFUNDED" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReturningInvoice(inv);
+                                const initialQtys: Record<string, number> = {};
+                                inv.items.forEach((item) => {
+                                  const alreadyRet = item.returnedQuantity || 0;
+                                  const maxAvailable = item.quantity - alreadyRet;
+                                  if (maxAvailable > 0) {
+                                    initialQtys[item.id] = 0;
+                                  }
+                                });
+                                setReturnQtys(initialQtys);
+                                setRefundMethod(inv.paymentMethod === "UPI" ? "UPI" : "CASH");
+                                setReturnReason("Customer return / restock");
+                              }}
+                              title="Process Item Return & Restock"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {onVoidInvoice && !isVoid && (
                             <button
                               type="button"
@@ -256,6 +288,240 @@ export const SalesHistoryModal: React.FC<SalesHistoryModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* ===================================================================== */}
+      {/* RETURN & RESTOCK MODAL                                                */}
+      {/* ===================================================================== */}
+      {returningInvoice && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 z-60 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <RotateCcw className="w-5 h-5" />
+                </span>
+                <div>
+                  <h4 className="text-base font-black text-slate-900 dark:text-white">
+                    Return & Restock Items
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Invoice #{returningInvoice.invoiceNumber} • {returningInvoice.customerName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReturningInvoice(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Item List with Quantities to Return */}
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+              {returningInvoice.items.map((item) => {
+                const alreadyReturned = item.returnedQuantity || 0;
+                const maxReturnable = Math.max(0, item.quantity - alreadyReturned);
+                const currentReturnQty = returnQtys[item.id] || 0;
+                const lineRefund = item.unitPricePaisa * BigInt(currentReturnQty);
+
+                return (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-750 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                        {item.name}
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                        {formatPaisa(item.unitPricePaisa)} each • Sold: {item.quantity}
+                        {alreadyReturned > 0 && ` (${alreadyReturned} already returned)`}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center border border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden bg-white dark:bg-slate-800">
+                        <button
+                          type="button"
+                          disabled={currentReturnQty <= 0}
+                          onClick={() =>
+                            setReturnQtys((prev) => ({
+                              ...prev,
+                              [item.id]: Math.max(0, (prev[item.id] || 0) - 1),
+                            }))
+                          }
+                          className="px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <span className="px-2.5 py-1 text-xs font-mono font-bold text-slate-900 dark:text-white min-w-[28px] text-center">
+                          {currentReturnQty}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={currentReturnQty >= maxReturnable}
+                          onClick={() =>
+                            setReturnQtys((prev) => ({
+                              ...prev,
+                              [item.id]: Math.min(maxReturnable, (prev[item.id] || 0) + 1),
+                            }))
+                          }
+                          className="px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <div className="text-right min-w-[70px]">
+                        <span className="text-[11px] font-mono font-black text-amber-600 dark:text-amber-400 block">
+                          {formatPaisa(lineRefund)}
+                        </span>
+                        <span className="text-[9px] text-slate-400">
+                          Max: {maxReturnable}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Total Refund & Tender Selector */}
+            {(() => {
+              const totalRefundPaisa = returningInvoice.items.reduce((sum, item) => {
+                const qty = returnQtys[item.id] || 0;
+                return sum + item.unitPricePaisa * BigInt(qty);
+              }, 0n);
+
+              return (
+                <>
+                  <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-300 block">
+                        Total Refund Amount
+                      </span>
+                      <span className="text-xs text-amber-600/80 dark:text-amber-400/80">
+                        Restocks catalog stock instantly
+                      </span>
+                    </div>
+                    <span className="text-lg font-black font-mono text-amber-700 dark:text-amber-300">
+                      {formatPaisa(totalRefundPaisa)}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                      Refund Payout Method
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRefundMethod("CASH")}
+                        className={`p-2.5 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition ${
+                          refundMethod === "CASH"
+                            ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                            : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                        }`}
+                      >
+                        <Wallet className="w-4 h-4" />
+                        Cash Drawer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRefundMethod("UPI")}
+                        className={`p-2.5 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition ${
+                          refundMethod === "UPI"
+                            ? "border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400 shadow-sm"
+                            : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                        }`}
+                      >
+                        <QrCode className="w-4 h-4" />
+                        UPI / Soundbox
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      Return Reason / Notes
+                    </label>
+                    <input
+                      type="text"
+                      value={returnReason}
+                      onChange={(e) => setReturnReason(e.target.value)}
+                      placeholder="e.g. Defective print, customer changed mind"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-750 text-slate-900 dark:text-white outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* Submit Return */}
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setReturningInvoice(null)}
+                      className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={totalRefundPaisa <= 0n}
+                      onClick={() => {
+                        if (totalRefundPaisa <= 0n) return;
+                        const returnItems: ReturnItem[] = [];
+                        returningInvoice.items.forEach((item) => {
+                          const qty = returnQtys[item.id] || 0;
+                          if (qty > 0) {
+                            returnItems.push({
+                              itemId: item.id,
+                              itemName: item.name,
+                              quantityReturned: qty,
+                              unitRefundPaisa: item.unitPricePaisa,
+                              totalRefundPaisa: item.unitPricePaisa * BigInt(qty),
+                            });
+                          }
+                        });
+
+                        const returnRecord: ReturnRecord = {
+                          id: `ret-${Date.now()}`,
+                          returnNumber: `RET-${Date.now().toString().slice(-6)}`,
+                          invoiceId: returningInvoice.id,
+                          invoiceNumber: returningInvoice.invoiceNumber,
+                          date: new Date().toISOString().split("T")[0],
+                          time: new Date().toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          }),
+                          customerName: returningInvoice.customerName,
+                          customerPhone: returningInvoice.customerPhone,
+                          items: returnItems,
+                          totalRefundPaisa,
+                          refundMethod,
+                          reason: returnReason,
+                        };
+
+                        if (onRecordReturn) {
+                          onRecordReturn({
+                            returnRecord,
+                            refundDeltaPaisa: totalRefundPaisa,
+                          });
+                        }
+                        setReturningInvoice(null);
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-amber-600/20 cursor-pointer"
+                    >
+                      Process Refund ({formatPaisa(totalRefundPaisa)})
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

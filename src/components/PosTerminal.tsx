@@ -4,6 +4,7 @@ import {
   Customer,
   InvoiceRecord,
   InvoiceItem,
+  ReturnRecord,
   PaymentMethod,
   TreasuryAccount,
   ItemKind,
@@ -71,6 +72,7 @@ interface PosTerminalProps {
     customerPhone?: string;
   }) => void;
   onVoidInvoice?: (invoiceId: string) => void;
+  onRecordReturn?: (params: { returnRecord: ReturnRecord; refundDeltaPaisa: bigint }) => void;
   timeStr: string;
 }
 
@@ -105,6 +107,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   invoices = [],
   onRecordSale,
   onVoidInvoice,
+  onRecordReturn,
   timeStr,
 }) => {
   // --- View Mode: Grid vs List ---
@@ -2536,6 +2539,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         onClose={() => setIsSalesHistoryOpen(false)}
         invoices={invoices}
         onVoidInvoice={onVoidInvoice}
+        onRecordReturn={onRecordReturn}
         onPrintThermal={handleThermalPrint}
         onDownloadPdf={handleDownloadPdf}
         onWhatsApp={handleWhatsAppDispatch}

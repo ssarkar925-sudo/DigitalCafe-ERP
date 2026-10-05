@@ -1131,10 +1131,30 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
                           Receive Payment
                         </button>
                       ) : (
-                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          No Dues
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {c.advanceBalancePaisa && c.advanceBalancePaisa > 0n ? (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              Adv: {formatPaisa(c.advanceBalancePaisa)}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              No Dues
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSettlingCustomer(c);
+                              setSettleAmountInput("500");
+                              setSettleMethod("CASH");
+                              setSettleNotes("Customer Advance Deposit");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 text-[11px] font-bold transition cursor-pointer"
+                          >
+                            + Advance
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>

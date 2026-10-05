@@ -1405,6 +1405,7 @@ export function App() {
             invoices={invoices}
             onRecordSale={handleRecordPosSale}
             onVoidInvoice={handleVoidInvoice}
+            onRecordReturn={handleRecordReturn}
             timeStr={timeStr}
           />
         )}
