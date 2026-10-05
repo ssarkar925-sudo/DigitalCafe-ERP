@@ -296,6 +296,7 @@ export interface ShopProfile {
   gstin: string;
   upiId: string;
   printFooterNote: string;
+  logoBase64?: string;
 }
 
 export interface HardwareConfig {

@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 import { InvoiceRecord, ShopProfile, DEFAULT_SHOP_PROFILE } from "./contracts";
 import { NOTO_SANS_REGULAR_B64, NOTO_SANS_BOLD_B64 } from "./pdf-fonts";
 
@@ -29,6 +30,36 @@ export function registerPdfFonts(doc: jsPDF): void {
 }
 
 /**
+ * Builds standard Indian UPI Intent link:
+ * upi://pay?pa=...&pn=...&am=...&cu=INR
+ */
+export function buildUpiPayUri(upiId: string, shopName: string, totalPaisa: bigint): string {
+  const cleanUpi = upiId.trim();
+  const cleanShop = encodeURIComponent(shopName.trim() || "Shop");
+  const rupees = (Number(totalPaisa) / 100).toFixed(2);
+  return `upi://pay?pa=${cleanUpi}&pn=${cleanShop}&am=${rupees}&cu=INR`;
+}
+
+/**
+ * Generates Base64 Data URL QR Code
+ */
+export async function generateUpiQrDataUrl(upiUri: string): Promise<string> {
+  try {
+    return await QRCode.toDataURL(upiUri, {
+      margin: 1,
+      width: 256,
+      color: {
+        dark: "#0f172a",
+        light: "#ffffff",
+      },
+    });
+  } catch (err) {
+    console.error("Failed to generate UPI QR data URL", err);
+    return "";
+  }
+}
+
+/**
  * Retrieves shop profile from localStorage, falling back to clean default.
  */
 export function getSavedShopProfile(): ShopProfile {
@@ -44,9 +75,9 @@ export function getSavedShopProfile(): ShopProfile {
 /**
  * Generates and downloads a high-density, professional A4 Tax Invoice PDF
  * with itemized GST breakdown, shop branding, customer details, bank/UPI details,
- * and authorized signatory seal block.
+ * custom shop logo (if uploaded), dynamic UPI QR code, and authorized signatory seal block.
  */
-export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopProfile): void {
+export async function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopProfile): Promise<void> {
   const profile = customProfile || getSavedShopProfile();
   const doc = new jsPDF({
     orientation: "portrait",
@@ -64,22 +95,35 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.rect(0, 0, pageWidth, 5, "F");
 
   // --- SHOP HEADER & LOGO ---
-  let y = 16;
+  let y = 14;
+  let textLeftX = margin;
+
+  // Render Custom Shop Logo if provided (Base64)
+  if (profile.logoBase64 && profile.logoBase64.startsWith("data:image/")) {
+    try {
+      const logoFormat = profile.logoBase64.includes("png") ? "PNG" : "JPEG";
+      doc.addImage(profile.logoBase64, logoFormat, margin, y - 1, 18, 18);
+      textLeftX = margin + 22;
+    } catch (e) {
+      console.warn("Could not render logo image in jsPDF", e);
+    }
+  }
+
   doc.setTextColor(15, 23, 42);
   doc.setFont("NotoSans", "bold");
-  doc.setFontSize(18);
-  doc.text(profile.shopName || "SARKAR COMMUNICATION", margin, y);
+  doc.setFontSize(16);
+  doc.text(profile.shopName || "SARKAR COMMUNICATION", textLeftX, y + 3);
 
   doc.setFont("NotoSans", "bold");
   doc.setFontSize(14);
   doc.setTextColor(16, 185, 129); // emerald-600
-  doc.text("TAX INVOICE", pageWidth - margin, y, { align: "right" });
+  doc.text("TAX INVOICE", pageWidth - margin, y + 3, { align: "right" });
 
-  y += 5.5;
+  y += 8;
   doc.setFont("NotoSans", "normal");
   doc.setFontSize(9);
   doc.setTextColor(71, 85, 105); // slate-600
-  doc.text(profile.tagline || "Digital Seva Kendra & Banking CSP Hub", margin, y);
+  doc.text(profile.tagline || "Digital Seva Kendra & Banking CSP Hub", textLeftX, y);
 
   doc.setFont("NotoSans", "bold");
   doc.setFontSize(8.5);
@@ -89,11 +133,11 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   y += 4.5;
   doc.setFont("NotoSans", "normal");
   doc.setFontSize(8);
-  doc.text(profile.address || "Main Market, Station Road, West Bengal, India", margin, y);
+  doc.text(profile.address || "Main Market, Station Road, West Bengal, India", textLeftX, y);
   doc.text(`DATE: ${inv.date}  |  TIME: ${inv.time}`, pageWidth - margin, y, { align: "right" });
 
   y += 4.5;
-  doc.text(`Phone: ${profile.phone || "+91 98765 43210"}  •  Email: ${profile.email || "support@sarkarcomm.in"}`, margin, y);
+  doc.text(`Phone: ${profile.phone || "+91 98765 43210"}  •  Email: ${profile.email || "support@sarkarcomm.in"}`, textLeftX, y);
   doc.setFont("NotoSans", "bold");
   doc.setTextColor(30, 41, 59);
   doc.text(`GSTIN: ${profile.gstin || "19AAAAA0000A1Z5"}`, pageWidth - margin, y, { align: "right" });
@@ -223,6 +267,39 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
       const modeLabel = al.method === "CASH" ? "Cash Received" : al.method === "UPI" ? "UPI QR Paid" : "Khata Due";
       doc.text(`  • ${modeLabel}: ${formatPdfCurrency(al.amountPaisa)}`, margin, y + 25 + aIdx * 3.8);
     });
+  }
+
+  // UPI QR Code Block (Scan & Pay) on the left side under terms
+  if (profile.upiId) {
+    const upiUri = buildUpiPayUri(profile.upiId, profile.shopName || "DigitalCafe", inv.totalPaisa);
+    const qrDataUrl = await generateUpiQrDataUrl(upiUri);
+    if (qrDataUrl) {
+      const qrY = y + (inv.paymentMethod === "SPLIT" ? 36 : 24);
+      // QR Box Card
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(margin, qrY, 82, 30, 2, 2, "F");
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin, qrY, 82, 30, 2, 2, "S");
+
+      // Draw QR image
+      doc.addImage(qrDataUrl, "PNG", margin + 3, qrY + 3, 24, 24);
+
+      // QR Text labels
+      doc.setFont("NotoSans", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text("SCAN & PAY VIA UPI", margin + 30, qrY + 8);
+
+      doc.setFont("NotoSans", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text("Scan with GPay, PhonePe, Paytm", margin + 30, qrY + 13);
+      doc.text(`VPA: ${profile.upiId}`, margin + 30, qrY + 18);
+
+      doc.setFont("NotoSans", "bold");
+      doc.setTextColor(16, 185, 129); // emerald-600
+      doc.text(`Amount: ${formatPdfCurrency(inv.totalPaisa)}`, margin + 30, qrY + 24);
+    }
   }
 
   // Right Summary table
@@ -503,12 +580,19 @@ export function printA4InvoiceHtml(inv: InvoiceRecord, customProfile?: ShopProfi
         <div class="invoice-container">
           <!-- HEADER -->
           <div class="header">
-            <div>
-              <div class="brand-name">${profile.shopName || "SARKAR COMMUNICATION"}</div>
-              <div class="brand-tagline">${profile.tagline || "Digital Seva & Banking CSP"}</div>
-              <div class="brand-meta">
-                ${profile.address || "Main Market, Station Road, West Bengal"}<br/>
-                Phone: <strong>${profile.phone || "+91 98765 43210"}</strong> | GSTIN: <strong>${profile.gstin || "19AAAAA0000A1Z5"}</strong>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              ${
+                profile.logoBase64
+                  ? `<img src="${profile.logoBase64}" alt="Shop Logo" style="width: 64px; height: 64px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0; padding: 2px;" />`
+                  : ""
+              }
+              <div>
+                <div class="brand-name">${profile.shopName || "SARKAR COMMUNICATION"}</div>
+                <div class="brand-tagline">${profile.tagline || "Digital Seva & Banking CSP"}</div>
+                <div class="brand-meta">
+                  ${profile.address || "Main Market, Station Road, West Bengal"}<br/>
+                  Phone: <strong>${profile.phone || "+91 98765 43210"}</strong> | GSTIN: <strong>${profile.gstin || "19AAAAA0000A1Z5"}</strong>
+                </div>
               </div>
             </div>
 
@@ -575,6 +659,23 @@ export function printA4InvoiceHtml(inv: InvoiceRecord, customProfile?: ShopProfi
               <div style="font-weight: 800; text-transform: uppercase; margin-bottom: 6px; color: #334155;">Terms & Payment Breakdown:</div>
               <div>• Computer generated tax invoice valid for business accounts and GST input credit.</div>
               <div>• For CSP/Banking receipts, retain transaction reference numbers for bank inquiries.</div>
+              ${
+                profile.upiId
+                  ? `
+                <div style="margin-top: 14px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; display: inline-flex; align-items: center; gap: 14px;">
+                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=4&data=${encodeURIComponent(
+                    buildUpiPayUri(profile.upiId, profile.shopName || "DigitalCafe", inv.totalPaisa)
+                  )}" alt="UPI QR" style="width: 80px; height: 80px; border-radius: 4px; border: 1px solid #cbd5e1;" />
+                  <div>
+                    <div style="font-weight: 800; font-size: 11px; color: #0f172a; text-transform: uppercase;">Scan & Pay via UPI</div>
+                    <div style="font-size: 10px; color: #64748b; margin-top: 2px;">Google Pay • PhonePe • Paytm</div>
+                    <div style="font-size: 10px; color: #0f172a; margin-top: 4px;">UPI VPA: <strong>${profile.upiId}</strong></div>
+                    <div style="font-size: 11px; font-weight: 800; color: #059669; margin-top: 4px;">Amount: ${formatInvoicePaisa(inv.totalPaisa)}</div>
+                  </div>
+                </div>
+              `
+                  : ""
+              }
               ${
                 inv.paymentMethod === "SPLIT" && inv.allocations && inv.allocations.length > 0
                   ? `<div style="margin-top: 8px; font-weight: bold; color: #0f172a;">Split Payment Tenders:</div>

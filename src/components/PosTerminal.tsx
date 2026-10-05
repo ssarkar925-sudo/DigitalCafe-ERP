@@ -12,7 +12,14 @@ import {
 import { createPosSaleJournal, JournalEntry } from "../core/ledger";
 import { syncInvoiceToCloud, syncCatalogItemToCloud } from "../core/supabase";
 import { sendWhatsAppMessage } from "../core/whatsapp";
-import { generateA4InvoicePdf, printA4InvoiceHtml, registerPdfFonts } from "../core/invoice-a4";
+import {
+  generateA4InvoicePdf,
+  printA4InvoiceHtml,
+  registerPdfFonts,
+  buildUpiPayUri,
+  generateUpiQrDataUrl,
+  getSavedShopProfile,
+} from "../core/invoice-a4";
 import { jsPDF } from "jspdf";
 import {
   Search,
@@ -912,35 +919,56 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   }, [cart, paymentMethod, splitRemainingPaisa, customerName, customerPhone, payableTotalPaisa]);
 
   // 1. Generate & Download PDF Receipt using jsPDF
-  const handleDownloadPdf = (inv: InvoiceRecord) => {
+  const handleDownloadPdf = async (inv: InvoiceRecord) => {
+    const profile = getSavedShopProfile();
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
-      format: [80, 160], // 80mm thermal receipt format
+      format: [80, 190], // Extended height for QR code
     });
     registerPdfFonts(doc);
 
+    let y = 8;
+    // Optional logo on 80mm slip
+    if (profile.logoBase64 && profile.logoBase64.startsWith("data:image/")) {
+      try {
+        const logoFormat = profile.logoBase64.includes("png") ? "PNG" : "JPEG";
+        doc.addImage(profile.logoBase64, logoFormat, 32, y, 16, 16);
+        y += 18;
+      } catch (e) {
+        // Fallback without logo
+      }
+    }
+
     doc.setFont("NotoSans", "bold");
     doc.setFontSize(12);
-    doc.text("SARKAR COMMUNICATION", 40, 10, { align: "center" });
+    doc.text(profile.shopName || "SARKAR COMMUNICATION", 40, y, { align: "center" });
 
+    y += 4;
     doc.setFontSize(8);
     doc.setFont("NotoSans", "normal");
-    doc.text("Digital Seva Kendra & Cyber Cafe", 40, 14, { align: "center" });
-    doc.text("West Bengal • Mob: +91 98765 43210", 40, 18, { align: "center" });
-    doc.text("--------------------------------------------------", 40, 22, { align: "center" });
+    doc.text(profile.tagline || "Digital Seva Kendra & Cyber Cafe", 40, y, { align: "center" });
+    y += 4;
+    doc.text(`${profile.address || "West Bengal"} • Mob: ${profile.phone || "+91 98765 43210"}`, 40, y, { align: "center" });
+    y += 4;
+    doc.text("--------------------------------------------------", 40, y, { align: "center" });
 
+    y += 4;
     doc.setFontSize(7.5);
-    doc.text(`Invoice: ${inv.invoiceNumber}`, 6, 26);
-    doc.text(`Date: ${inv.date} ${inv.time}`, 6, 30);
-    doc.text(`Customer: ${inv.customerName}`, 6, 34);
+    doc.text(`Invoice: ${inv.invoiceNumber}`, 6, y);
+    y += 4;
+    doc.text(`Date: ${inv.date} ${inv.time}`, 6, y);
+    y += 4;
+    doc.text(`Customer: ${inv.customerName}`, 6, y);
     if (inv.customerPhone) {
-      doc.text(`Phone: ${inv.customerPhone}`, 6, 38);
+      y += 4;
+      doc.text(`Phone: ${inv.customerPhone}`, 6, y);
     }
-    doc.text("--------------------------------------------------", 40, 42, { align: "center" });
+    y += 4;
+    doc.text("--------------------------------------------------", 40, y, { align: "center" });
 
     // Header Table
-    let y = 46;
+    y += 4;
     doc.setFont("NotoSans", "bold");
     doc.text("Item", 6, y);
     doc.text("Qty", 48, y);
@@ -1019,10 +1047,31 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       doc.setFontSize(7.5);
       doc.setFont("NotoSans", "normal");
       doc.text(`Tender Mode: ${inv.paymentMethod}`, 6, y);
-      y += 6;
+      y += 5;
     }
 
-    doc.text("Thank you for visiting Sarkar Communication!", 40, y, { align: "center" });
+    // Dynamic UPI QR Code on 80mm receipt
+    if (profile.upiId) {
+      const upiUri = buildUpiPayUri(profile.upiId, profile.shopName || "DigitalCafe", inv.totalPaisa);
+      const qrDataUrl = await generateUpiQrDataUrl(upiUri);
+      if (qrDataUrl) {
+        doc.addImage(qrDataUrl, "PNG", 28, y, 24, 24);
+        y += 26;
+        doc.setFont("NotoSans", "bold");
+        doc.setFontSize(7);
+        doc.text("SCAN & PAY VIA UPI", 40, y, { align: "center" });
+        y += 3.5;
+        doc.setFont("NotoSans", "normal");
+        doc.setFontSize(6.5);
+        doc.text(`VPA: ${profile.upiId}`, 40, y, { align: "center" });
+        y += 4;
+      }
+    }
+
+    doc.text("--------------------------------------------------", 40, y, { align: "center" });
+    y += 4;
+    doc.setFontSize(7.5);
+    doc.text(profile.printFooterNote || "Thank you! Visit again.", 40, y, { align: "center" });
     y += 4;
     doc.text("Govt Services • Banking CSP • Xerox & Print", 40, y, { align: "center" });
 
@@ -1031,8 +1080,16 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
   // 2. Browser Print (Thermal ESC/POS Layout)
   const handleThermalPrint = (inv: InvoiceRecord) => {
+    const profile = getSavedShopProfile();
     const printWindow = window.open("", "_blank", "width=360,height=600");
     if (!printWindow) return;
+
+    const upiUri = profile.upiId
+      ? buildUpiPayUri(profile.upiId, profile.shopName || "DigitalCafe", inv.totalPaisa)
+      : "";
+    const qrUrl = profile.upiId
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=3&data=${encodeURIComponent(upiUri)}`
+      : "";
 
     printWindow.document.write(`
       <html>
@@ -1059,9 +1116,14 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           </style>
         </head>
         <body>
-          <div class="center bold" style="font-size: 14px;">SARKAR COMMUNICATION</div>
-          <div class="center">Digital Seva Kendra & CSP</div>
-          <div class="center">Phone: +91 98765 43210 • GSTIN: 19AAAAA0000A1Z5</div>
+          ${
+            profile.logoBase64
+              ? `<div class="center" style="margin-bottom: 4px;"><img src="${profile.logoBase64}" style="width: 48px; height: 48px; object-fit: contain;" /></div>`
+              : ""
+          }
+          <div class="center bold" style="font-size: 14px;">${profile.shopName || "SARKAR COMMUNICATION"}</div>
+          <div class="center">${profile.tagline || "Digital Seva Kendra & CSP"}</div>
+          <div class="center">Phone: ${profile.phone || "+91 98765 43210"} • GSTIN: ${profile.gstin || "19AAAAA0000A1Z5"}</div>
           <div class="divider"></div>
           <div>Inv: ${inv.invoiceNumber}</div>
           <div>Date: ${inv.date} ${inv.time}</div>
@@ -1128,9 +1190,21 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   .join("")}</table>`
               : ""
           }
+          ${
+            qrUrl
+              ? `
+            <div class="divider"></div>
+            <div class="center" style="margin: 6px 0;">
+              <img src="${qrUrl}" alt="UPI QR" style="width: 90px; height: 90px; border: 1px solid #ddd; padding: 2px;" />
+              <div class="bold" style="font-size: 10px; margin-top: 3px;">SCAN & PAY VIA UPI</div>
+              <div style="font-size: 9px; color: #555;">${profile.upiId}</div>
+            </div>
+          `
+              : ""
+          }
           <div class="divider"></div>
-          <div class="center" style="font-size: 10px;">Thank You! Visit Again</div>
-          <div class="center" style="font-size: 9px;">Sarkar Communication Counter</div>
+          <div class="center" style="font-size: 10px;">${profile.printFooterNote || "Thank You! Visit Again"}</div>
+          <div class="center" style="font-size: 9px;">${profile.shopName || "Sarkar Communication Counter"}</div>
         </body>
       </html>
     `);

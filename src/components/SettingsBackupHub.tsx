@@ -452,9 +452,70 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
               <Store className="w-4 h-4 text-emerald-500" />
               Shop Identity Details
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              These details are printed on thermal receipts, customer statements, and WhatsApp slips.
-            </p>
+            {/* LOGO UPLOAD & BRANDING SECTION */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-750 rounded-2xl border border-slate-200/80 dark:border-slate-700 flex flex-col sm:flex-row items-center gap-4">
+              <div className="w-20 h-20 rounded-xl bg-white dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                {profileForm.logoBase64 ? (
+                  <img
+                    src={profileForm.logoBase64}
+                    alt="Shop Logo"
+                    className="w-full h-full object-contain p-1"
+                  />
+                ) : (
+                  <Store className="w-8 h-8 text-slate-400" />
+                )}
+              </div>
+
+              <div className="flex-1 space-y-1.5 text-center sm:text-left">
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                  Shop Brand Logo (Invoices & Thermal Slips)
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Upload a crisp PNG or JPEG logo (recommended square, under 500KB). It will appear on A4 Tax Invoices and thermal counter receipts.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1 justify-center sm:justify-start">
+                  <label className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold cursor-pointer transition">
+                    <span>{profileForm.logoBase64 ? "Change Logo" : "Upload Logo"}</span>
+                    <input
+                      type="file"
+                      accept="image/png, image/jpeg, image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 1024 * 1024) {
+                            showToast("Logo file too large! Please choose an image under 1MB.");
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const b64 = event.target?.result as string;
+                            if (b64) {
+                              setProfileForm((prev) => ({ ...prev, logoBase64: b64 }));
+                              showToast("✓ Logo loaded! Click 'Save Profile Changes' below.");
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+
+                  {profileForm.logoBase64 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileForm((prev) => ({ ...prev, logoBase64: undefined }));
+                        showToast("Logo removed.");
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition cursor-pointer"
+                    >
+                      Remove Logo
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               <div>
