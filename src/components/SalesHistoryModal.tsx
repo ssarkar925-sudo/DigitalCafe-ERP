@@ -5,6 +5,7 @@ import {
   Search,
   Printer,
   FileDown,
+  FileText,
   MessageSquare,
   Trash2,
   X,
@@ -25,6 +26,8 @@ interface SalesHistoryModalProps {
   onRecordReturn?: (params: { returnRecord: ReturnRecord; refundDeltaPaisa: bigint }) => void;
   onPrintThermal: (invoice: InvoiceRecord) => void;
   onDownloadPdf: (invoice: InvoiceRecord) => void;
+  onDownloadA4Pdf?: (invoice: InvoiceRecord) => void;
+  onPrintA4?: (invoice: InvoiceRecord) => void;
   onWhatsApp: (invoice: InvoiceRecord) => void;
   formatPaisa: (paisa: bigint) => string;
 }
@@ -37,6 +40,8 @@ export const SalesHistoryModal: React.FC<SalesHistoryModalProps> = ({
   onRecordReturn,
   onPrintThermal,
   onDownloadPdf,
+  onDownloadA4Pdf,
+  onPrintA4,
   onWhatsApp,
   formatPaisa,
 }) => {
@@ -199,10 +204,20 @@ export const SalesHistoryModal: React.FC<SalesHistoryModalProps> = ({
 
                       <td className="p-3 text-right shrink-0">
                         <div className="flex items-center justify-end gap-1">
+                          {onDownloadA4Pdf && (
+                            <button
+                              type="button"
+                              onClick={() => onDownloadA4Pdf(inv)}
+                              title="Download A4 Tax Invoice (PDF)"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition cursor-pointer"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => onPrintThermal(inv)}
-                            title="Thermal Print Slip"
+                            title="Thermal Print Slip (80mm/58mm)"
                             className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/40 transition cursor-pointer"
                           >
                             <Printer className="w-3.5 h-3.5" />
@@ -210,7 +225,7 @@ export const SalesHistoryModal: React.FC<SalesHistoryModalProps> = ({
                           <button
                             type="button"
                             onClick={() => onDownloadPdf(inv)}
-                            title="Download PDF Slip"
+                            title="Download Thermal PDF Slip"
                             className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition cursor-pointer"
                           >
                             <FileDown className="w-3.5 h-3.5" />

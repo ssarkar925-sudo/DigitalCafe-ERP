@@ -12,6 +12,7 @@ import {
 import { createPosSaleJournal, JournalEntry } from "../core/ledger";
 import { syncInvoiceToCloud, syncCatalogItemToCloud } from "../core/supabase";
 import { sendWhatsAppMessage } from "../core/whatsapp";
+import { generateA4InvoicePdf, printA4InvoiceHtml } from "../core/invoice-a4";
 import { jsPDF } from "jspdf";
 import {
   Search,
@@ -19,6 +20,7 @@ import {
   Trash2,
   Printer,
   FileDown,
+  FileText,
   MessageSquare,
   CheckCircle2,
   Wallet,
@@ -2764,6 +2766,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         onRecordReturn={onRecordReturn}
         onPrintThermal={handleThermalPrint}
         onDownloadPdf={handleDownloadPdf}
+        onDownloadA4Pdf={generateA4InvoicePdf}
+        onPrintA4={printA4InvoiceHtml}
         onWhatsApp={handleWhatsAppDispatch}
         formatPaisa={formatPaisa}
       />
@@ -2962,16 +2966,29 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               )}
             </div>
 
-            {/* 3 One-Click Output Actions */}
-            <div className="grid grid-cols-3 gap-2.5 pt-2">
+            {/* 4 Output Actions: A4 Tax Invoice, Thermal Print, PDF Slip, WhatsApp */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => handleDownloadPdf(completedInvoice)}
-                className="p-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:bg-slate-700/80 border border-emerald-200/90 dark:border-emerald-700/60 flex flex-col items-center justify-center gap-1.5 hover:scale-105 transition cursor-pointer"
+                onClick={() => generateA4InvoicePdf(completedInvoice)}
+                className="p-3 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:bg-slate-700/80 border border-indigo-200/90 dark:border-indigo-700/60 flex flex-col items-center justify-center gap-1.5 hover:scale-105 transition cursor-pointer"
+                title="Download full-page GST compliant A4 Tax Invoice (PDF)"
               >
-                <FileDown className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                 <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                  PDF Slip
+                  A4 Invoice (PDF)
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => printA4InvoiceHtml(completedInvoice)}
+                className="p-3 rounded-2xl bg-gradient-to-br from-purple-50 to-indigo-50 dark:bg-slate-700/80 border border-purple-200/90 dark:border-purple-700/60 flex flex-col items-center justify-center gap-1.5 hover:scale-105 transition cursor-pointer"
+                title="Print directly to standard desktop printer on A4 sheet"
+              >
+                <Printer className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                  A4 Print
                 </span>
               </button>
 
@@ -2979,17 +2996,19 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 type="button"
                 onClick={() => handleThermalPrint(completedInvoice)}
                 className="p-3 rounded-2xl bg-gradient-to-br from-sky-50 to-blue-50 dark:bg-slate-700/80 border border-sky-200/90 dark:border-sky-700/60 flex flex-col items-center justify-center gap-1.5 hover:scale-105 transition cursor-pointer"
+                title="Print 80mm/58mm thermal counter receipt slip"
               >
-                <Printer className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+                <Receipt className="w-5 h-5 text-sky-600 dark:text-sky-400" />
                 <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                  Thermal Print
+                  Thermal Slip
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleWhatsAppDispatch(completedInvoice)}
-                className="p-3 rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 dark:bg-slate-700/80 border border-teal-200/90 dark:border-teal-700/60 flex flex-col items-center justify-center gap-1.5 hover:scale-105 transition cursor-pointer"
+                className="p-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:bg-slate-700/80 border border-emerald-200/90 dark:border-emerald-700/60 flex flex-col items-center justify-center gap-1.5 hover:scale-105 transition cursor-pointer"
+                title="Instant 1-Click WhatsApp digital bill dispatch"
               >
                 <MessageSquare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
