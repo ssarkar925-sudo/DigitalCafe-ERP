@@ -227,6 +227,43 @@ export function App() {
     } catch (e) {}
   }, [invoices]);
 
+  // 4.5 Return & Refund Records
+  const [returnRecords, setReturnRecords] = useState<ReturnRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem("dc_return_records");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((ret: any) => ({
+            ...ret,
+            totalRefundPaisa: BigInt(ret.totalRefundPaisa || 0),
+            items: (ret.items || []).map((it: any) => ({
+              ...it,
+              unitRefundPaisa: BigInt(it.unitRefundPaisa || 0),
+              totalRefundPaisa: BigInt(it.totalRefundPaisa || 0),
+            })),
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      const serializable = returnRecords.map((ret) => ({
+        ...ret,
+        totalRefundPaisa: ret.totalRefundPaisa.toString(),
+        items: ret.items.map((it) => ({
+          ...it,
+          unitRefundPaisa: it.unitRefundPaisa.toString(),
+          totalRefundPaisa: it.totalRefundPaisa.toString(),
+        })),
+      }));
+      localStorage.setItem("dc_return_records", JSON.stringify(serializable));
+    } catch (e) {}
+  }, [returnRecords]);
+
   // 5. Cash Book Entries
   const [cashBookEntries, setCashBookEntries] = useState<CashBookEntry[]>(() => {
     try {
@@ -834,6 +871,9 @@ export function App() {
       ]);
     }
 
+    // 4. Save into Refund / Return Audit Records
+    setReturnRecords((prev) => [returnRecord, ...prev]);
+
     showToast(`✓ Processed Return #${returnRecord.returnNumber} (${formatPaisa(returnRecord.totalRefundPaisa)}) and restocked inventory.`);
   };
 
@@ -1390,6 +1430,7 @@ export function App() {
     if (data.invoices) setInvoices(data.invoices);
     if (data.digitalTransactions) setDigitalTransactions(data.digitalTransactions);
     if (data.cashBookEntries) setCashBookEntries(data.cashBookEntries);
+    if ((data as any).returnRecords) setReturnRecords((data as any).returnRecords);
     if (data.shopProfile) setShopProfile(data.shopProfile);
     if (data.hardwareConfig) setHardwareConfig(data.hardwareConfig);
     showToast("✓ All database records restored from JSON backup!");
@@ -1401,6 +1442,7 @@ export function App() {
     localStorage.removeItem("dc_user_customers");
     localStorage.removeItem("dc_user_catalog");
     localStorage.removeItem("dc_user_invoices");
+    localStorage.removeItem("dc_return_records");
     localStorage.removeItem("dc_csp_transactions");
     localStorage.removeItem("dc_user_cashbook");
     localStorage.removeItem("dc_day_close_audits");
@@ -1409,6 +1451,7 @@ export function App() {
     setCustomers(INITIAL_CUSTOMERS);
     setCatalogItems(INITIAL_CATALOG_ITEMS);
     setInvoices([]);
+    setReturnRecords([]);
     setDigitalTransactions([]);
     setCashBookEntries([]);
     showToast("✓ Factory reset complete: All records cleared to initial state.");
@@ -1433,14 +1476,18 @@ export function App() {
           activeTab === "pos" ? "h-screen overflow-hidden p-4 flex flex-col" : "h-screen overflow-y-auto p-6"
         }`}
       >
-        {/* TOAST NOTICE */}
+        {/* GLOBAL FLOATING TOAST NOTIFICATION */}
         {toastNotice && (
-          <div className="mb-4 bg-emerald-600 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-150 flex items-center justify-between">
-            <span>{toastNotice}</span>
+          <div className="fixed top-5 right-5 z-50 max-w-md bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-emerald-500/40 flex items-center justify-between gap-3 animate-in slide-in-from-top-4 fade-in duration-200">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-emerald-300 font-black">Notification:</span>
+              <span className="text-slate-100">{toastNotice}</span>
+            </div>
             <button
               type="button"
               onClick={() => setToastNotice(null)}
-              className="text-white/80 hover:text-white font-bold cursor-pointer"
+              className="text-slate-400 hover:text-white font-black cursor-pointer px-1 text-sm transition"
             >
               ✕
             </button>
@@ -1473,6 +1520,7 @@ export function App() {
             customers={customers}
             accounts={accounts}
             invoices={invoices}
+            returnRecords={returnRecords}
             onRecordSale={handleRecordPosSale}
             onVoidInvoice={handleVoidInvoice}
             onRecordReturn={handleRecordReturn}

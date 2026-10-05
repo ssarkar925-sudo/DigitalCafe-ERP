@@ -66,6 +66,7 @@ interface PosTerminalProps {
   onAddCustomer?: (customer: Customer) => void;
   accounts: TreasuryAccount[];
   invoices?: InvoiceRecord[];
+  returnRecords?: ReturnRecord[];
   onRecordSale: (params: {
     invoice: InvoiceRecord;
     journal: JournalEntry;
@@ -109,6 +110,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   onAddCustomer,
   accounts,
   invoices = [],
+  returnRecords = [],
   onRecordSale,
   onVoidInvoice,
   onRecordReturn,
@@ -1297,15 +1299,20 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             </button>
           )}
 
-          {/* Sales History Register Button */}
+          {/* Sales History & Refund Register Button */}
           <button
             type="button"
             onClick={() => setIsSalesHistoryOpen(true)}
             className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-            title="View today's sales, reprint slips, or void transactions"
+            title="View today's sales, reprint slips, track refunds, or void transactions"
           >
             <Receipt className="w-3.5 h-3.5 text-indigo-500" />
             <span className="hidden sm:inline">Bills ({invoices.length})</span>
+            {returnRecords.length > 0 && (
+              <span className="hidden sm:inline px-1 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                {returnRecords.length} Ret
+              </span>
+            )}
             <span className="sm:hidden">Bills</span>
           </button>
 
@@ -2771,6 +2778,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         isOpen={isSalesHistoryOpen}
         onClose={() => setIsSalesHistoryOpen(false)}
         invoices={invoices}
+        returnRecords={returnRecords}
         onVoidInvoice={onVoidInvoice}
         onRecordReturn={onRecordReturn}
         onPrintThermal={handleThermalPrint}
