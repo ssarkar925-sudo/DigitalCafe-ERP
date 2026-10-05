@@ -63,7 +63,7 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
   onOpenAccountManager,
   showToast,
 }) => {
-  const [subTab, setSubTab] = useState<"cashbook" | "denomination" | "pools" | "section194n">("cashbook");
+  const [subTab, setSubTab] = useState<"cashbook" | "denomination" | "pools" | "section194n" | "pnl">("cashbook");
 
   // Format Helper
   const formatPaisa = (paisa: bigint) => {
@@ -451,6 +451,19 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
         >
           <ShieldCheck className="w-3.5 h-3.5" />
           Section 194N TDS Shield
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubTab("pnl")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            subTab === "pnl"
+              ? "bg-amber-500 text-white shadow-md shadow-amber-500/25"
+              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+        >
+          <IndianRupee className="w-3.5 h-3.5" />
+          Profit & Loss Statement
         </button>
       </div>
 
@@ -970,6 +983,167 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
           </div>
         </div>
       )}
+
+      {/* ==================================================================== */}
+      {/* TAB 5: PERIODIC PROFIT & LOSS (P&L) STATEMENT                        */}
+      {/* ==================================================================== */}
+      {subTab === "pnl" && (() => {
+        // Compute P&L Metrics based on non-void records
+        const activeInvoices = invoices.filter((i) => i.status !== "VOID");
+        const activeDigital = digitalTransactions.filter((d) => d.status !== "VOID");
+
+        const posSalesRevenue = activeInvoices.reduce((sum, i) => sum + i.totalPaisa, 0n);
+        const digitalServiceIncome = activeDigital.reduce((sum, d) => sum + d.customerFeePaisa + d.portalCommissionPaisa, 0n);
+        const totalGrossRevenue = posSalesRevenue + digitalServiceIncome;
+
+        // Operating Expenses from CashBook categories EXPENSE + STOCK_PURCHASE
+        const shopOperatingExpenses = cashBookEntries
+          .filter((e) => e.type === "OUT" && (e.category === "EXPENSE" || e.category === "STOCK_PURCHASE" || e.category === "CASH_SHORTAGE"))
+          .reduce((sum, e) => sum + e.amountPaisa, 0n);
+
+        const netShopProfitPaisa = totalGrossRevenue - shopOperatingExpenses;
+        const profitMarginPct = totalGrossRevenue > 0n ? Number((netShopProfitPaisa * 10000n) / totalGrossRevenue) / 100 : 0;
+
+        return (
+          <div className="space-y-6">
+            {/* P&L Header Card */}
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700/70 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <div className="flex items-center gap-3">
+                  <span className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                    <IndianRupee className="w-6 h-6" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      Profit & Loss (P&L) Statement
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Canonical commercial accounting separating Gross Turnover, Digital Service Margins, and Operational Costs.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-slate-500" />
+                    Print Statement
+                  </button>
+                </div>
+              </div>
+
+              {/* 3 Executive KPI Chips */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-700/30 border border-slate-200/60 dark:border-slate-600/40">
+                  <span className="text-[10px] font-black uppercase text-slate-400 block">Total Commercial Inflow</span>
+                  <span className="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400 mt-1 block">
+                    {formatPaisa(totalGrossRevenue)}
+                  </span>
+                  <span className="text-[10px] text-slate-500">POS Sales + CSP Fees & Commissions</span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-700/30 border border-slate-200/60 dark:border-slate-600/40">
+                  <span className="text-[10px] font-black uppercase text-slate-400 block">Operating Costs & Purchases</span>
+                  <span className="text-lg font-black font-mono text-rose-600 dark:text-rose-400 mt-1 block">
+                    {formatPaisa(shopOperatingExpenses)}
+                  </span>
+                  <span className="text-[10px] text-slate-500">Shop Rent, Electricity, Tea, Paper & Stock</span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-700/30 border border-slate-200/60 dark:border-slate-600/40">
+                  <span className="text-[10px] font-black uppercase text-slate-400 block">Net Shop Profit</span>
+                  <span className={`text-lg font-black font-mono mt-1 block ${netShopProfitPaisa >= 0n ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                    {formatPaisa(netShopProfitPaisa)}
+                  </span>
+                  <span className="text-[10px] text-slate-500">Margin: {profitMarginPct.toFixed(1)}%</span>
+                </div>
+              </div>
+
+              {/* Detailed Accounting Schedule Table */}
+              <div className="pt-2">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-400 text-[10px] font-black uppercase">
+                      <th className="py-2.5">Accounting Head / Particulars</th>
+                      <th className="py-2.5 text-center">Type</th>
+                      <th className="py-2.5 text-right">Amount (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-semibold">
+                    {/* POS Revenue */}
+                    <tr>
+                      <td className="py-2.5 text-slate-800 dark:text-slate-200">
+                        Express POS Counter Sales (Invoices: {activeInvoices.length})
+                      </td>
+                      <td className="py-2.5 text-center text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                        REVENUE
+                      </td>
+                      <td className="py-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                        {formatPaisa(posSalesRevenue)}
+                      </td>
+                    </tr>
+
+                    {/* CSP Income */}
+                    <tr>
+                      <td className="py-2.5 text-slate-800 dark:text-slate-200">
+                        Digital CSP & Banking Service Earnings (AEPS / DMT / BBPS: {activeDigital.length})
+                      </td>
+                      <td className="py-2.5 text-center text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                        COMMISSION
+                      </td>
+                      <td className="py-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                        {formatPaisa(digitalServiceIncome)}
+                      </td>
+                    </tr>
+
+                    {/* Subtotal Gross Profit */}
+                    <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-black">
+                      <td className="py-2.5 text-emerald-900 dark:text-emerald-300">
+                        GROSS BUSINESS INCOME
+                      </td>
+                      <td className="py-2.5 text-center text-emerald-700 dark:text-emerald-400 text-[10px]">
+                        SUBTOTAL
+                      </td>
+                      <td className="py-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400 text-sm">
+                        {formatPaisa(totalGrossRevenue)}
+                      </td>
+                    </tr>
+
+                    {/* Less: Operating Expenses */}
+                    <tr>
+                      <td className="py-2.5 text-slate-800 dark:text-slate-200">
+                        Less: Shop General Expenses & Consumables Purchases
+                      </td>
+                      <td className="py-2.5 text-center text-rose-600 dark:text-rose-400 text-[10px] font-bold">
+                        EXPENSE
+                      </td>
+                      <td className="py-2.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                        -{formatPaisa(shopOperatingExpenses)}
+                      </td>
+                    </tr>
+
+                    {/* Net Profit Final */}
+                    <tr className="bg-slate-100/70 dark:bg-slate-700/40 font-black text-sm">
+                      <td className="py-3 text-slate-900 dark:text-white">
+                        NET PROFIT / (LOSS) AFTER ALL COSTS
+                      </td>
+                      <td className="py-3 text-center text-slate-500 text-[10px]">
+                        BOTTOM LINE
+                      </td>
+                      <td className={`py-3 text-right font-mono ${netShopProfitPaisa >= 0n ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                        {formatPaisa(netShopProfitPaisa)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ==================================================================== */}
       {/* MODAL: RECORD MANUAL CASH IN / OUT ENTRY                             */}
