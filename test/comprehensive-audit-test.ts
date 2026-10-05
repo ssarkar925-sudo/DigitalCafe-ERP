@@ -633,6 +633,92 @@ console.log("\n[SUITE 8: Cross-Module Khata Lifecycle, Stock Purchases & Void Re
   );
 }
 
+// ==============================================================================
+// 9. SUITE 9: MODULE 5 CASHBOOK, DENOMINATION COUNTER & SECTION 194N INVARIANTS
+// ==============================================================================
+console.log("\n[SUITE 9: Module 5 - CashBook, Denomination Counter & Section 194N Invariants]");
+
+// 1. Tactile Denomination Multiplier Precision
+{
+  // 3x ₹500 + 4x ₹200 + 10x ₹100 + 5x ₹50 + 8x ₹20 + 12x ₹10 + ₹14.50 coins
+  // 1500 + 800 + 1000 + 250 + 160 + 120 + 14.50 = ₹3,844.50 (384450n paisa)
+  const n500 = 3;
+  const n200 = 4;
+  const n100 = 10;
+  const n50 = 5;
+  const n20 = 8;
+  const n10 = 12;
+  const coinsPaisa = 1450n;
+
+  const physicalPaisa =
+    BigInt(n500) * 50000n +
+    BigInt(n200) * 20000n +
+    BigInt(n100) * 10000n +
+    BigInt(n50) * 5000n +
+    BigInt(n20) * 2000n +
+    BigInt(n10) * 1000n +
+    coinsPaisa;
+
+  assert(
+    physicalPaisa === 384450n,
+    "Denomination Counter: Multipliers and coins sum strictly equals ₹3,844.50"
+  );
+
+  // Exact Match Variance Test
+  const expectedPaisa = 384450n;
+  const varianceExact = physicalPaisa - expectedPaisa;
+  assert(
+    varianceExact === 0n,
+    "Denomination Variance: Exact physical vs system match yields 0 paisa variance"
+  );
+
+  // Shortage Variance Test (e.g. Expected is ₹4,000.00 -> Shortage of ₹155.50)
+  const expectedHigherPaisa = 400000n;
+  const varianceShortage = physicalPaisa - expectedHigherPaisa;
+  assert(
+    varianceShortage === -15550n,
+    "Denomination Variance: Shortage of ₹155.50 identified with negative variance"
+  );
+}
+
+// 2. Daily Cash Book Running Balance Invariant
+{
+  let runningBalPaisa = 100000n; // Opening ₹1,000
+
+  // 1. POS Cash Sale +₹350
+  runningBalPaisa += 35000n;
+  assert(runningBalPaisa === 135000n, "Cash Book: POS cash inflow updates running balance to ₹1,350.00");
+
+  // 2. Shop Expense (Tea/Snacks) -₹50
+  runningBalPaisa -= 5000n;
+  assert(runningBalPaisa === 130000n, "Cash Book: Expense outflow updates running balance to ₹1,300.00");
+
+  // 3. Khata Repayment +₹500
+  runningBalPaisa += 50000n;
+  assert(runningBalPaisa === 180000n, "Cash Book: Khata cash repayment updates running balance to ₹1,800.00");
+
+  // 4. Stock Purchase -₹600
+  runningBalPaisa -= 60000n;
+  assert(runningBalPaisa === 120000n, "Cash Book: Stock purchase outflow updates running balance to ₹1,200.00");
+}
+
+// 3. Section 194N Statutory Threshold Shield Calculation
+{
+  const nonItrLimitPaisa = 200000000n; // ₹20 Lakhs
+  const regularLimitPaisa = 1000000000n; // ₹1 Crore
+
+  // Simulate ₹12.5 Lakhs bank cash withdrawal for AEPS/CSP payouts
+  const currentWithdrawalsPaisa = 125000000n;
+
+  const pctNonItr = Number((currentWithdrawalsPaisa * 10000n) / nonItrLimitPaisa) / 100;
+  const pctRegular = Number((currentWithdrawalsPaisa * 10000n) / regularLimitPaisa) / 100;
+
+  assert(
+    pctNonItr === 62.5 && pctRegular === 12.5,
+    "Section 194N Shield: Progress exactly tracks statutory limits (62.5% Non-ITR, 12.5% Regular)"
+  );
+}
+
 console.log("\n================================================================================");
 console.log(` 🏁 TEST SUMMARY: ${stats.passed} Passed, ${stats.failed} Failed`);
 console.log("================================================================================\n");

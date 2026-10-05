@@ -263,8 +263,8 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
       .reduce((sum, e) => sum + e.amountPaisa, 0n);
   }, [cashBookEntries]);
 
-  const percentageUsedNonItr = Number((totalBankCashWithdrawalsPaisa * 100n) / nonItrThresholdPaisa);
-  const percentageUsedRegular = Number((totalBankCashWithdrawalsPaisa * 100n) / regularThresholdPaisa);
+  const percentageUsedNonItr = Number((totalBankCashWithdrawalsPaisa * 10000n) / nonItrThresholdPaisa) / 100;
+  const percentageUsedRegular = Number((totalBankCashWithdrawalsPaisa * 10000n) / regularThresholdPaisa) / 100;
 
   // Quick WhatsApp Day-End Summary
   const handleShareDayCloseWhatsApp = () => {
