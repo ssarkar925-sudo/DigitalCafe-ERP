@@ -493,12 +493,22 @@ export const BbpsRechargeHub: React.FC<BbpsRechargeHubProps> = ({
     return BigInt(Math.round(n * 100));
   }, [rechargeCustomerFee]);
 
-  const rechargeCommissionPaisa = useMemo(() => {
+  // Manual override for operator commission (empty = use operator default rate)
+  const [rechargeCommissionOverride, setRechargeCommissionOverride] = useState<string>("");
+
+  const rechargeDefaultCommissionPaisa = useMemo(() => {
     if (rechargeAmountPaisa <= 0n) return 0n;
     const commPct = activeOpObj.commPct;
     const commAmt = (Number(rechargeAmountPaisa) * commPct) / 100;
     return BigInt(Math.round(commAmt));
   }, [rechargeAmountPaisa, activeOpObj]);
+
+  const rechargeCommissionPaisa = useMemo(() => {
+    if (rechargeCommissionOverride.trim() === "") return rechargeDefaultCommissionPaisa;
+    const n = parseFloat(rechargeCommissionOverride);
+    if (isNaN(n) || n < 0) return 0n;
+    return BigInt(Math.round(n * 100));
+  }, [rechargeCommissionOverride, rechargeDefaultCommissionPaisa]);
 
   const rechargeCustomerTotalPaisa = useMemo(() => {
     return rechargeAmountPaisa + rechargeCustomerFeePaisa;
@@ -1349,6 +1359,20 @@ export const BbpsRechargeHub: React.FC<BbpsRechargeHubProps> = ({
                       className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
+                  <div className="flex gap-1 mt-1">
+                    {["0", "5", "10", "20", "50"].map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setUtilityCustomerFee(f)}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold cursor-pointer ${
+                          utilityCustomerFee === f ? "bg-emerald-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        }`}
+                      >
+                        ₹{f}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1649,6 +1673,46 @@ export const BbpsRechargeHub: React.FC<BbpsRechargeHubProps> = ({
                       className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
+                  <div className="flex gap-1 mt-1">
+                    {["0", "5", "10", "20"].map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setRechargeCustomerFee(f)}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold cursor-pointer ${
+                          rechargeCustomerFee === f ? "bg-emerald-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        }`}
+                      >
+                        ₹{f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 block">
+                    Operator Commission (₹)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-2.5 text-xs font-black text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={rechargeCommissionOverride}
+                      onChange={(e) => setRechargeCommissionOverride(e.target.value)}
+                      placeholder={(Number(rechargeDefaultCommissionPaisa) / 100).toFixed(2)}
+                      className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-sm font-black font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <span className="text-[9px] text-slate-400 mt-0.5 block">
+                    Default {activeOpObj.commPct}%: {formatPaisa(rechargeDefaultCommissionPaisa)} • Net: {formatPaisa(rechargeNetProfitPaisa)}
+                    {rechargeCommissionOverride.trim() !== "" && (
+                      <button type="button" onClick={() => setRechargeCommissionOverride("")} className="ml-1.5 text-emerald-600 font-bold hover:underline cursor-pointer">
+                        Reset
+                      </button>
+                    )}
+                  </span>
                 </div>
 
                 <div>
