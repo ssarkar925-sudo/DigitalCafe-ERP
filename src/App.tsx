@@ -25,6 +25,7 @@ import { AccountManagerModal } from "./components/AccountManagerModal";
 import { CspKiosk } from "./components/CspKiosk";
 import { BbpsRechargeHub } from "./components/BbpsRechargeHub";
 import { KhataStockHub } from "./components/KhataStockHub";
+import { CashBookAccountsHub } from "./components/CashBookAccountsHub";
 import { StockMovement, KhataSettlement } from "./core/contracts";
 import { ArrowLeftRight, Landmark } from "lucide-react";
 
@@ -1105,6 +1106,61 @@ export function App() {
     }
   };
 
+  // Direct Cash Book Entry Handler (Manual In / Out)
+  const handleRecordCashEntry = ({
+    description,
+    type,
+    amountPaisa,
+    category,
+  }: {
+    description: string;
+    type: "IN" | "OUT";
+    amountPaisa: bigint;
+    category: CashBookEntry["category"];
+  }) => {
+    // 1. Update Cash Drawer balance
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === cashAccount.id) {
+          return {
+            ...acc,
+            currentBalancePaisa:
+              type === "IN"
+                ? acc.currentBalancePaisa + amountPaisa
+                : acc.currentBalancePaisa >= amountPaisa
+                ? acc.currentBalancePaisa - amountPaisa
+                : 0n,
+          };
+        }
+        return acc;
+      })
+    );
+
+    // 2. Append to Cash Book
+    const newBal =
+      type === "IN"
+        ? cashAccount.currentBalancePaisa + amountPaisa
+        : cashAccount.currentBalancePaisa >= amountPaisa
+        ? cashAccount.currentBalancePaisa - amountPaisa
+        : 0n;
+
+    setCashBookEntries((prev) => [
+      {
+        id: `cb-${Date.now()}`,
+        date: new Date().toISOString().split("T")[0],
+        time: timeStr,
+        description,
+        type,
+        amountPaisa,
+        runningBalancePaisa: newBal,
+        category,
+      },
+      ...prev,
+    ]);
+
+    showToast(`✓ Recorded Cash ${type} (${formatPaisa(amountPaisa)})`);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100/70 dark:bg-slate-900 text-slate-900 dark:text-slate-100 flex font-sans transition-colors duration-200">
       {/* 1. SIDEBAR */}
@@ -1217,22 +1273,21 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 5 ACCOUNTS & CASHBOOK */}
         {activeTab === "accounts" && (
-          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">🏦</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 5: Cash Drawer & Accounts Hub</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-              Daily Cash Book, physical note denomination counter, Section 194N tracker, and P&L.
-            </p>
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => setIsAccountManagerOpen(true)}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
-              >
-                ⚙️ Open Treasury & Accounts Manager
-              </button>
-            </div>
-          </div>
+          <CashBookAccountsHub
+            accounts={accounts}
+            cashBookEntries={cashBookEntries}
+            customers={customers}
+            invoices={invoices}
+            digitalTransactions={digitalTransactions}
+            timeStr={timeStr}
+            onAddAccount={handleAddAccount}
+            onEditAccount={handleEditAccount}
+            onDeleteAccount={handleDeleteAccount}
+            onRecordCashEntry={handleRecordCashEntry}
+            onOpenMoveMoney={() => setIsMoveOpen(true)}
+            onOpenAccountManager={() => setIsAccountManagerOpen(true)}
+            showToast={showToast}
+          />
         )}
 
         {/* WORKSPACE VIEW: MODULE 6 SETTINGS */}

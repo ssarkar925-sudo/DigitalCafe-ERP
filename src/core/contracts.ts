@@ -192,7 +192,12 @@ export interface CashBookEntry {
     | "VOID_REVERSAL"
     | "UTILITY_BILL_CASH"
     | "RECHARGE_CASH"
-    | "GAMING_CASH";
+    | "GAMING_CASH"
+    | "STOCK_PURCHASE"
+    | "MANUAL_IN"
+    | "OPENING_BALANCE"
+    | "CASH_SHORTAGE"
+    | "CASH_OVERAGE";
   referenceId?: string;
 }
 
