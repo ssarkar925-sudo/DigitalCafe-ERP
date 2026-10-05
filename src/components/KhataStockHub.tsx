@@ -14,6 +14,7 @@ import {
   JournalEntry,
 } from "../core/ledger";
 import { sendWhatsAppMessage } from "../core/whatsapp";
+import { getSavedShopProfile, buildUpiPayUri, registerPdfFonts, formatPdfCurrency } from "../core/invoice-a4";
 import { jsPDF } from "jspdf";
 import {
   Users,
@@ -449,29 +450,422 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
 
   // WhatsApp Statement Dispatch (1-Click)
   const handleSendWhatsAppReminder = async (c: Customer) => {
+    const profile = getSavedShopProfile();
+    const shopName = profile.shopName || "Sarkar Communication";
+    const upiId = profile.upiId || "sarkarcommunication@upi";
     const dueRupees = (Number(c.currentDuePaisa) / 100).toFixed(2);
     // Dynamic Merchant UPI Deep Link
-    const upiLink = `upi://pay?pa=sarkarcommunication@upi&pn=SarkarCommunication&am=${dueRupees}&cu=INR&tn=KhataPayment_${encodeURIComponent(c.name)}`;
+    const upiLink = buildUpiPayUri(upiId, shopName, c.currentDuePaisa) + `&tn=KhataPayment_${encodeURIComponent(c.name)}`;
 
-    let msg = `🧾 *SARKAR COMMUNICATION - KHATA DUES STATEMENT*\n`;
-    msg += `----------------------------------------\n`;
+    let msg = `🧾 *${shopName.toUpperCase()} - KHATA STATEMENT*\n`;
+    msg += `─────────────────────────\n`;
     msg += `👤 *Customer Name:* ${c.name}\n`;
     msg += `📅 *Statement Date:* ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}\n`;
     msg += `💳 *Credit Limit:* ${formatPaisa(c.creditLimitPaisa)}\n`;
-    msg += `💰 *Current Outstanding Due:* ${formatPaisa(c.currentDuePaisa)}\n`;
+    msg += `💰 *Current Outstanding Due:* *${formatPaisa(c.currentDuePaisa)}*\n`;
     if (c.advanceBalancePaisa && c.advanceBalancePaisa > 0n) {
       msg += `✨ *Advance Credit Deposit:* ${formatPaisa(c.advanceBalancePaisa)}\n`;
     }
-    msg += `----------------------------------------\n`;
+    msg += `─────────────────────────\n`;
     msg += `Dear customer, please clear your outstanding balance of *₹${dueRupees}* at your earliest convenience.\n\n`;
-    msg += `📲 *Pay Directly via UPI Link:* \n${upiLink}\n\n`;
-    msg += `You can also pay in Cash or scan our Counter Soundbox QR on your next visit.\n\n`;
-    msg += `Thank you for your business!\n*Sarkar Communication • Digital Seva Hub*`;
+    msg += `📲 *Pay Directly via Instant UPI Link:*\n${upiLink}\n\n`;
+    msg += `💡 *How to Pay:* Tap the UPI link above to open Google Pay, PhonePe, or Paytm directly with the bill pre-filled, or scan our counter QR on your next visit.\n\n`;
+    msg += `Thank you for your business! 🙏\n*${shopName}*`;
 
     const phone = c.phone ? c.phone.replace(/\D/g, "") : "";
     await sendWhatsAppMessage(phone, msg, (toastMsg) => {
       if (showToast) showToast(toastMsg);
     });
+  };
+
+  // 1-Click Customer A4 Khata Statement PDF Generator
+  const handleDownloadStatementPdf = (c: Customer) => {
+    const profile = getSavedShopProfile();
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+    registerPdfFonts(doc);
+
+    const pageWidth = 210;
+    const margin = 14;
+    const contentWidth = pageWidth - margin * 2;
+
+    // Header Strip
+    doc.setFillColor(88, 28, 135); // purple-900
+    doc.rect(0, 0, pageWidth, 5, "F");
+
+    let y = 16;
+    doc.setFont("NotoSans", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text(profile.shopName || "SARKAR COMMUNICATION", margin, y);
+
+    doc.setFontSize(14);
+    doc.setTextColor(126, 34, 206); // purple-700
+    doc.text("CUSTOMER KHATA STATEMENT", pageWidth - margin, y, { align: "right" });
+
+    y += 6;
+    doc.setFont("NotoSans", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`${profile.address || "Main Market, West Bengal"} • Phone: ${profile.phone || "+91 98765 43210"}`, margin, y);
+    doc.text(`DATE: ${new Date().toLocaleDateString("en-IN")}`, pageWidth - margin, y, { align: "right" });
+
+    y += 5;
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, y, pageWidth - margin, y);
+
+    // Customer & Due Summary Card
+    y += 5;
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(margin, y, contentWidth, 22, 2, 2, "F");
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, contentWidth, 22, 2, 2, "S");
+
+    doc.setFont("NotoSans", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("CUSTOMER ACCOUNT", margin + 4, y + 5);
+    doc.text("FINANCIAL SUMMARY", margin + 105, y + 5);
+
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text(c.name, margin + 4, y + 11);
+
+    doc.setFont("NotoSans", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Mobile: ${c.phone || "Not specified"}`, margin + 4, y + 16);
+
+    doc.setFont("NotoSans", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(225, 29, 72); // rose-600
+    doc.text(`Outstanding Due: ${formatPdfCurrency(c.currentDuePaisa)}`, margin + 105, y + 11);
+
+    doc.setFont("NotoSans", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Approved Credit Limit: ${formatPdfCurrency(c.creditLimitPaisa)}`, margin + 105, y + 16);
+
+    // Ledger History Table Header
+    y += 28;
+    doc.setFillColor(30, 41, 59);
+    doc.rect(margin, y, contentWidth, 7, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("NotoSans", "bold");
+    doc.setFontSize(7.5);
+    doc.text("DATE / TIME", margin + 3, y + 4.8);
+    doc.text("TRANSACTION PARTICULARS", margin + 35, y + 4.8);
+    doc.text("TYPE", margin + 110, y + 4.8);
+    doc.text("DEBIT (+DUE)", margin + 145, y + 4.8, { align: "right" });
+    doc.text("CREDIT (-PAID)", margin + contentWidth - 3, y + 4.8, { align: "right" });
+
+    y += 7;
+    doc.setFont("NotoSans", "normal");
+    doc.setFontSize(8);
+
+    // Gather records
+    const custInvs = invoices.filter(
+      (inv) =>
+        inv.paymentMethod === "KHATA" ||
+        (inv.allocations && inv.allocations.some((al) => al.method === "KHATA" && al.customerId === c.id)) ||
+        inv.customerName.toLowerCase() === c.name.toLowerCase()
+    );
+    const custCsp = digitalTransactions.filter(
+      (t) =>
+        t.feeCollectionMode === "KHATA" &&
+        ((t.customerName && t.customerName.toLowerCase() === c.name.toLowerCase()) ||
+          (t.customerMobile && t.customerMobile === c.phone))
+    );
+    const custSets = settlements.filter((s) => s.customerId === c.id);
+
+    const allRecords: Array<{ date: string; time: string; desc: string; type: string; dr: bigint; cr: bigint }> = [];
+
+    custInvs.forEach((i) => {
+      allRecords.push({
+        date: i.date,
+        time: i.time,
+        desc: `POS Invoice #${i.invoiceNumber} (${i.items.length} items)`,
+        type: "PURCHASE",
+        dr: i.totalPaisa,
+        cr: 0n,
+      });
+    });
+
+    custCsp.forEach((t) => {
+      allRecords.push({
+        date: t.date,
+        time: t.time,
+        desc: `${t.serviceType} Fee #${t.id} (${t.beneficiaryDetails || "CSP Kiosk"})`,
+        type: "CSP SERVICE",
+        dr: t.customerFeePaisa,
+        cr: 0n,
+      });
+    });
+
+    custSets.forEach((s) => {
+      allRecords.push({
+        date: s.date,
+        time: s.time,
+        desc: `Khata Repayment #${s.id} via ${s.paymentMethod}`,
+        type: "PAYMENT",
+        dr: 0n,
+        cr: s.amountPaisa,
+      });
+    });
+
+    allRecords.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+    if (allRecords.length === 0) {
+      doc.setTextColor(148, 163, 184);
+      doc.text("No transactions recorded yet in ledger.", margin + 4, y + 6);
+      y += 10;
+    } else {
+      allRecords.forEach((row, idx) => {
+        if (y > 270) {
+          doc.addPage();
+          registerPdfFonts(doc);
+          y = 15;
+        }
+        const rowBg = idx % 2 === 0 ? [255, 255, 255] : [248, 250, 252];
+        doc.setFillColor(rowBg[0], rowBg[1], rowBg[2]);
+        doc.rect(margin, y, contentWidth, 6.5, "F");
+
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${row.date} ${row.time}`, margin + 3, y + 4.5);
+
+        doc.setTextColor(15, 23, 42);
+        const descCut = row.desc.length > 40 ? row.desc.substring(0, 38) + ".." : row.desc;
+        doc.text(descCut, margin + 35, y + 4.5);
+
+        doc.setFont("NotoSans", "bold");
+        doc.setTextColor(100, 116, 139);
+        doc.text(row.type, margin + 110, y + 4.5);
+
+        if (row.dr > 0n) {
+          doc.setTextColor(225, 29, 72); // rose-600
+          doc.text(`+${formatPdfCurrency(row.dr)}`, margin + 145, y + 4.5, { align: "right" });
+        } else {
+          doc.setTextColor(203, 213, 225);
+          doc.text("—", margin + 145, y + 4.5, { align: "right" });
+        }
+
+        if (row.cr > 0n) {
+          doc.setTextColor(16, 185, 129); // emerald-600
+          doc.text(`-${formatPdfCurrency(row.cr)}`, margin + contentWidth - 3, y + 4.5, { align: "right" });
+        } else {
+          doc.setTextColor(203, 213, 225);
+          doc.text("—", margin + contentWidth - 3, y + 4.5, { align: "right" });
+        }
+
+        doc.setFont("NotoSans", "normal");
+        y += 6.5;
+      });
+    }
+
+    // Bottom Statement Summary
+    y += 4;
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, y, margin + contentWidth, y);
+    y += 6;
+
+    // QR Payment Box
+    if (profile.upiId && c.currentDuePaisa > 0n) {
+      const upiUri = buildUpiPayUri(profile.upiId, profile.shopName || "DigitalCafe", c.currentDuePaisa);
+      const dueRupees = (Number(c.currentDuePaisa) / 100).toFixed(2);
+      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=3&data=${encodeURIComponent(upiUri)}`;
+
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(margin, y, 90, 26, 2, 2, "F");
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin, y, 90, 26, 2, 2, "S");
+
+      doc.setFont("NotoSans", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text("SCAN & PAY KHATA DUE VIA UPI", margin + 4, y + 5);
+
+      doc.setFont("NotoSans", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`VPA: ${profile.upiId}`, margin + 4, y + 10);
+      doc.text(`Instant settlement pre-filled for ₹${dueRupees}`, margin + 4, y + 15);
+
+      doc.setFont("NotoSans", "bold");
+      doc.setTextColor(16, 185, 129);
+      doc.text("Compatible with GPay, PhonePe, Paytm, BHIM", margin + 4, y + 21);
+    }
+
+    // Grand Outstanding Card
+    const cardX = margin + 95;
+    const cardW = contentWidth - 95;
+    doc.setFillColor(15, 23, 42);
+    doc.rect(cardX, y, cardW, 16, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("NotoSans", "bold");
+    doc.setFontSize(9);
+    doc.text("NET OUTSTANDING DUE:", cardX + 4, y + 6);
+    doc.setFontSize(12);
+    doc.text(formatPdfCurrency(c.currentDuePaisa), cardX + cardW - 4, y + 11, { align: "right" });
+
+    // Footer
+    const pageHeight = 297;
+    doc.setFont("NotoSans", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("Computer generated statement • Powered by DigitalCafe ERP", pageWidth / 2, pageHeight - 8, { align: "center" });
+
+    doc.save(`${c.name.replace(/\s+/g, "_")}_Khata_Statement.pdf`);
+  };
+
+  // Browser Print Statement (A4 HTML)
+  const handlePrintStatementHtml = (c: Customer) => {
+    const profile = getSavedShopProfile();
+    const printWindow = window.open("", "_blank", "width=850,height=950");
+    if (!printWindow) return;
+
+    const dueRupees = (Number(c.currentDuePaisa) / 100).toFixed(2);
+    const upiUri = profile.upiId
+      ? buildUpiPayUri(profile.upiId, profile.shopName || "DigitalCafe", c.currentDuePaisa)
+      : "";
+    const qrUrl = profile.upiId && c.currentDuePaisa > 0n
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=3&data=${encodeURIComponent(upiUri)}`
+      : "";
+
+    // Gather records
+    const custInvs = invoices.filter(
+      (inv) =>
+        inv.paymentMethod === "KHATA" ||
+        (inv.allocations && inv.allocations.some((al) => al.method === "KHATA" && al.customerId === c.id)) ||
+        inv.customerName.toLowerCase() === c.name.toLowerCase()
+    );
+    const custCsp = digitalTransactions.filter(
+      (t) =>
+        t.feeCollectionMode === "KHATA" &&
+        ((t.customerName && t.customerName.toLowerCase() === c.name.toLowerCase()) ||
+          (t.customerMobile && t.customerMobile === c.phone))
+    );
+    const custSets = settlements.filter((s) => s.customerId === c.id);
+
+    const allRecords: Array<{ date: string; time: string; desc: string; type: string; dr: bigint; cr: bigint }> = [];
+    custInvs.forEach((i) => allRecords.push({ date: i.date, time: i.time, desc: `POS Invoice #${i.invoiceNumber} (${i.items.length} items)`, type: "Purchase", dr: i.totalPaisa, cr: 0n }));
+    custCsp.forEach((t) => allRecords.push({ date: t.date, time: t.time, desc: `${t.serviceType} Fee #${t.id}`, type: "CSP Fee", dr: t.customerFeePaisa, cr: 0n }));
+    custSets.forEach((s) => allRecords.push({ date: s.date, time: s.time, desc: `Payment #${s.id} (${s.paymentMethod})`, type: "Payment", dr: 0n, cr: s.amountPaisa }));
+    allRecords.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${c.name} - Khata Statement</title>
+          <style>
+            @page { size: A4 portrait; margin: 12mm 15mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 20px; font-size: 13px; }
+            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #581c87; padding-bottom: 14px; margin-bottom: 16px; }
+            .brand-name { font-size: 20px; font-weight: 900; color: #0f172a; margin: 0 0 4px 0; }
+            .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th { background: #0f172a; color: #fff; font-size: 11px; text-transform: uppercase; padding: 8px 10px; text-align: left; }
+            td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+            tr:nth-child(even) td { background: #f8fafc; }
+            .text-right { text-align: right; }
+            .dr { color: #e11d48; font-weight: bold; }
+            .cr { color: #059669; font-weight: bold; }
+            .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; }
+            .qr-card { display: flex; align-items: center; gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; }
+            .total-card { background: #0f172a; color: #fff; padding: 12px 18px; border-radius: 8px; text-align: right; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="brand-name">${profile.shopName || "SARKAR COMMUNICATION"}</div>
+              <div style="font-size: 12px; color: #475569;">${profile.tagline || "Digital Seva & Banking CSP"}</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Phone: ${profile.phone || "+91 98765 43210"} | GSTIN: ${profile.gstin || "19AAAAA0000A1Z5"}</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 18px; font-weight: 900; color: #6b21a8;">KHATA STATEMENT</div>
+              <div style="font-size: 11px; color: #64748b;">Date: ${new Date().toLocaleDateString("en-IN")}</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div>
+              <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b;">Customer Account</div>
+              <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px;">${c.name}</div>
+              <div style="font-size: 12px; color: #475569; margin-top: 2px;">Mobile: ${c.phone || "—"}</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b;">Current Outstanding Due</div>
+              <div style="font-size: 20px; font-weight: 900; color: #e11d48; margin-top: 2px;">${formatPaisa(c.currentDuePaisa)}</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Credit Limit: ${formatPaisa(c.creditLimitPaisa)}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Date / Time</th>
+                <th>Transaction Particulars</th>
+                <th>Type</th>
+                <th class="text-right">Debit (+Due)</th>
+                <th class="text-right">Credit (-Paid)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                allRecords.length === 0
+                  ? `<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px;">No transaction records found.</td></tr>`
+                  : allRecords
+                      .map(
+                        (r) => `
+                <tr>
+                  <td>${r.date} ${r.time}</td>
+                  <td><strong>${r.desc}</strong></td>
+                  <td>${r.type}</td>
+                  <td class="text-right ${r.dr > 0n ? "dr" : ""}">${r.dr > 0n ? `+${formatPaisa(r.dr)}` : "—"}</td>
+                  <td class="text-right ${r.cr > 0n ? "cr" : ""}">${r.cr > 0n ? `-${formatPaisa(r.cr)}` : "—"}</td>
+                </tr>
+              `
+                      )
+                      .join("")
+              }
+            </tbody>
+          </table>
+
+          <div class="footer">
+            ${
+              qrUrl
+                ? `
+              <div class="qr-card">
+                <img src="${qrUrl}" alt="UPI QR" style="width: 80px; height: 80px; border-radius: 4px; border: 1px solid #cbd5e1;" />
+                <div>
+                  <div style="font-weight: 800; font-size: 11px; text-transform: uppercase;">Scan & Pay via UPI</div>
+                  <div style="font-size: 10px; color: #64748b;">Google Pay • PhonePe • Paytm</div>
+                  <div style="font-size: 10px; margin-top: 2px;">VPA: <strong>${profile.upiId}</strong></div>
+                  <div style="font-size: 11px; font-weight: 800; color: #059669; margin-top: 2px;">Amount: ₹${dueRupees}</div>
+                </div>
+              </div>
+            `
+                : "<div></div>"
+            }
+
+            <div class="total-card">
+              <div style="font-size: 11px; font-weight: bold; text-transform: uppercase;">Total Outstanding</div>
+              <div style="font-size: 22px; font-weight: 900; margin-top: 2px;">${formatPaisa(c.currentDuePaisa)}</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 350);
   };
 
   // WhatsApp Settlement Slip Dispatch (1-Click)
@@ -2243,7 +2637,39 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
                 )}
             </div>
 
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadStatementPdf(statementCustomer)}
+                  className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  title="Download complete ledger statement as A4 PDF"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>Download Statement (PDF)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handlePrintStatementHtml(statementCustomer)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  title="Print directly to standard printer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print A4</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsAppReminder(statementCustomer)}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Send statement with instant UPI deep payment link on WhatsApp"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>WhatsApp UPI Link</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setStatementCustomer(null)}
