@@ -50,6 +50,7 @@ export interface Customer {
   phone: string;
   currentDuePaisa: bigint;
   creditLimitPaisa: bigint;
+  advanceBalancePaisa?: bigint;
   createdAt?: string;
 }
 
@@ -75,6 +76,7 @@ export interface InvoiceItem {
   unitPricePaisa: bigint;
   totalPaisa: bigint;
   kind?: ItemKind;
+  returnedQuantity?: number;
 }
 
 export type PaymentMethod = "CASH" | "UPI" | "KHATA" | "SPLIT";
@@ -97,10 +99,34 @@ export interface InvoiceRecord {
     accountId?: string;
     customerId?: string;
   }[];
-  status: "PAID" | "REFUNDED" | "VOID";
+  status: "PAID" | "REFUNDED" | "VOID" | "PARTIAL_RETURN";
+  returnedPaisa?: bigint;
 }
 
-export type StockMovementType = "PURCHASE_IN" | "SALE_OUT" | "INTERNAL_USE" | "SCRAP_ADJUSTMENT";
+export interface ReturnItem {
+  itemId: string;
+  itemName: string;
+  quantityReturned: number;
+  unitRefundPaisa: bigint;
+  totalRefundPaisa: bigint;
+}
+
+export interface ReturnRecord {
+  id: string;
+  returnNumber: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  date: string;
+  time: string;
+  customerName: string;
+  customerPhone?: string;
+  items: ReturnItem[];
+  totalRefundPaisa: bigint;
+  refundMethod: "CASH" | "UPI";
+  reason?: string;
+}
+
+export type StockMovementType = "PURCHASE_IN" | "SALE_OUT" | "INTERNAL_USE" | "SCRAP_ADJUSTMENT" | "RETURN_RESTOCK";
 
 export interface StockMovement {
   id: string;
@@ -130,6 +156,7 @@ export interface KhataSettlement {
   paymentMethod: "CASH" | "UPI";
   receivingAccountId: string;
   receivingAccountName: string;
+  type?: "SETTLEMENT" | "ADVANCE_DEPOSIT";
   notes?: string;
 }
 

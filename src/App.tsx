@@ -11,6 +11,7 @@ import {
   DigitalTransaction,
   InvoiceRecord,
   CashBookEntry,
+  ReturnRecord,
 } from "./core/contracts";
 import { createContraTransferJournal, JournalEntry } from "./core/ledger";
 import {
@@ -116,6 +117,7 @@ export function App() {
             ...c,
             currentDuePaisa: BigInt(c.currentDuePaisa || 0),
             creditLimitPaisa: BigInt(c.creditLimitPaisa || 200000),
+            advanceBalancePaisa: BigInt(c.advanceBalancePaisa || 0),
           }));
         }
       }
@@ -129,6 +131,7 @@ export function App() {
         ...c,
         currentDuePaisa: c.currentDuePaisa.toString(),
         creditLimitPaisa: c.creditLimitPaisa.toString(),
+        advanceBalancePaisa: (c.advanceBalancePaisa || 0n).toString(),
       }));
       localStorage.setItem("dc_user_customers", JSON.stringify(serializable));
     } catch (e) {}
@@ -577,11 +580,29 @@ export function App() {
             c.name.toLowerCase() === invoice.customerName.toLowerCase()
         );
         if (existing) {
-          return prev.map((c) =>
-            c.id === existing.id
-              ? { ...c, currentDuePaisa: c.currentDuePaisa + khataDeltaPaisa }
-              : c
-          );
+          const adv = existing.advanceBalancePaisa || 0n;
+          if (adv >= khataDeltaPaisa) {
+            // Bill fully covered by advance
+            return prev.map((c) =>
+              c.id === existing.id
+                ? { ...c, advanceBalancePaisa: adv - khataDeltaPaisa }
+                : c
+            );
+          } else if (adv > 0n) {
+            // Partially covered by advance, rest becomes due
+            const remainingDue = khataDeltaPaisa - adv;
+            return prev.map((c) =>
+              c.id === existing.id
+                ? { ...c, advanceBalancePaisa: 0n, currentDuePaisa: c.currentDuePaisa + remainingDue }
+                : c
+            );
+          } else {
+            return prev.map((c) =>
+              c.id === existing.id
+                ? { ...c, currentDuePaisa: c.currentDuePaisa + khataDeltaPaisa }
+                : c
+            );
+          }
         } else {
           return [
             ...prev,
@@ -671,6 +692,81 @@ export function App() {
     }
 
     showToast(`✓ Voided invoice #${inv.invoiceNumber} and reversed all balances.`);
+  };
+
+  // Handle Item Return & Restock
+  const handleRecordReturn = ({
+    returnRecord,
+    refundDeltaPaisa,
+  }: {
+    returnRecord: ReturnRecord;
+    refundDeltaPaisa: bigint;
+  }) => {
+    // 1. Update Invoice status & returned quantity
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        if (inv.id !== returnRecord.invoiceId) return inv;
+        const updatedItems = inv.items.map((item) => {
+          const retItem = returnRecord.items.find((r) => r.itemId === item.id);
+          if (retItem) {
+            return {
+              ...item,
+              returnedQuantity: (item.returnedQuantity || 0) + retItem.quantityReturned,
+            };
+          }
+          return item;
+        });
+
+        const newTotalReturned = (inv.returnedPaisa || 0n) + returnRecord.totalRefundPaisa;
+        const isFullyReturned = newTotalReturned >= inv.totalPaisa;
+
+        return {
+          ...inv,
+          items: updatedItems,
+          returnedPaisa: newTotalReturned,
+          status: isFullyReturned ? "REFUNDED" : "PARTIAL_RETURN",
+        };
+      })
+    );
+
+    // 2. Restock Inventory for returned goods
+    returnRecord.items.forEach((r) => {
+      setCatalogItems((prev) =>
+        prev.map((cat) =>
+          cat.id === r.itemId
+            ? { ...cat, currentStock: cat.currentStock + r.quantityReturned }
+            : cat
+        )
+      );
+    });
+
+    // 3. Refund Tender Reversal (Cash Drawer / Soundbox QR)
+    if (returnRecord.refundMethod === "CASH" && refundDeltaPaisa > 0n) {
+      setAccounts((prev) =>
+        prev.map((acc) =>
+          acc.id === cashAccount.id
+            ? { ...acc, currentBalancePaisa: acc.currentBalancePaisa >= refundDeltaPaisa ? acc.currentBalancePaisa - refundDeltaPaisa : 0n }
+            : acc
+        )
+      );
+
+      setCashBookEntries((prev) => [
+        {
+          id: `cb-${Date.now()}`,
+          date: returnRecord.date,
+          time: returnRecord.time,
+          description: `REFUND RTN #${returnRecord.returnNumber} for Invoice #${returnRecord.invoiceNumber}`,
+          type: "OUT",
+          amountPaisa: refundDeltaPaisa,
+          runningBalancePaisa: cashAccount.currentBalancePaisa >= refundDeltaPaisa ? cashAccount.currentBalancePaisa - refundDeltaPaisa : 0n,
+          category: "POS_SALE",
+          referenceId: returnRecord.returnNumber,
+        },
+        ...prev,
+      ]);
+    }
+
+    showToast(`✓ Processed Return #${returnRecord.returnNumber} (${formatPaisa(returnRecord.totalRefundPaisa)}) and restocked inventory.`);
   };
 
   // Digital CSP Transaction Handlers
@@ -1039,19 +1135,30 @@ export function App() {
     cashDeltaPaisa: bigint;
     qrDeltaPaisa: bigint;
   }) => {
-    // 1. Update Customer Due Balance
+    // 1. Update Customer Due Balance & Advance Balance
     setCustomers((prev) =>
-      prev.map((c) =>
-        c.id === settlement.customerId
-          ? {
-              ...c,
-              currentDuePaisa:
-                c.currentDuePaisa >= settlement.amountPaisa
-                  ? c.currentDuePaisa - settlement.amountPaisa
-                  : 0n,
-            }
-          : c
-      )
+      prev.map((c) => {
+        if (c.id !== settlement.customerId) return c;
+        if (settlement.type === "ADVANCE_DEPOSIT") {
+          return {
+            ...c,
+            advanceBalancePaisa: (c.advanceBalancePaisa || 0n) + settlement.amountPaisa,
+          };
+        }
+        if (c.currentDuePaisa >= settlement.amountPaisa) {
+          return {
+            ...c,
+            currentDuePaisa: c.currentDuePaisa - settlement.amountPaisa,
+          };
+        } else {
+          const excess = settlement.amountPaisa - c.currentDuePaisa;
+          return {
+            ...c,
+            currentDuePaisa: 0n,
+            advanceBalancePaisa: (c.advanceBalancePaisa || 0n) + excess,
+          };
+        }
+      })
     );
 
     // 2. Update Inward Treasury Account

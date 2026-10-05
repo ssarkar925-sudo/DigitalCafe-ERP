@@ -796,6 +796,66 @@ console.log("\n[SUITE 10: Module 6 - Database Backup Export, Deserialization & R
   );
 }
 
+// ==============================================================================
+// 11. SUITE 11: ADVANCE DEPOSITS & PARTIAL RETURNS / RESTOCK INVARIANTS
+// ==============================================================================
+console.log("\n[SUITE 11: Customer Advance Deposit & Partial Return Restock Invariants]");
+
+// 1. Customer Advance Deposit & Automatic POS Sale Credit Offsetting
+{
+  let advancePaisa = 100000n; // ₹1,000 Advance deposited by customer
+  let currentDuePaisa = 0n;
+
+  // Invoice on credit for ₹400
+  const invoiceCreditPaisa = 40000n;
+
+  if (advancePaisa >= invoiceCreditPaisa) {
+    advancePaisa -= invoiceCreditPaisa;
+  } else {
+    currentDuePaisa += (invoiceCreditPaisa - advancePaisa);
+    advancePaisa = 0n;
+  }
+
+  assert(
+    advancePaisa === 60000n && currentDuePaisa === 0n,
+    "Advance Deposit: POS credit bill ₹400 auto-offset against ₹1,000 advance leaving ₹600 remaining"
+  );
+
+  // Subsequent high-value credit sale for ₹900
+  const secondSalePaisa = 90000n;
+  if (advancePaisa >= secondSalePaisa) {
+    advancePaisa -= secondSalePaisa;
+  } else {
+    currentDuePaisa += (secondSalePaisa - advancePaisa);
+    advancePaisa = 0n;
+  }
+
+  assert(
+    advancePaisa === 0n && currentDuePaisa === 30000n,
+    "Advance Exhaustion: ₹900 sale uses remaining ₹600 advance and posts exact ₹300 due"
+  );
+}
+
+// 2. Partial Item Return & Inventory Restock Math
+{
+  let currentStock = 20; // 20 spiral notebooks in shop
+  const initialInvoiceTotal = 150000n; // ₹1,500 for 10 notebooks @ ₹150
+  let returnedRefundPaisa = 0n;
+
+  // Customer returns 2 notebooks
+  const returnedQty = 2;
+  const unitPrice = 15000n; // ₹150
+  const refundAmount = BigInt(returnedQty) * unitPrice; // ₹300
+
+  currentStock += returnedQty; // Restock inventory
+  returnedRefundPaisa += refundAmount;
+
+  assert(
+    currentStock === 22 && returnedRefundPaisa === 30000n,
+    "Partial Return: 2 items restocked back to inventory (20 -> 22) and exact ₹300 refunded"
+  );
+}
+
 console.log("\n================================================================================");
 console.log(` 🏁 TEST SUMMARY: ${stats.passed} Passed, ${stats.failed} Failed`);
 console.log("================================================================================\n");
