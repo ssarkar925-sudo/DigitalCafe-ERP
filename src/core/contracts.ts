@@ -223,6 +223,44 @@ export interface DayCloseAudit {
   notes?: string;
 }
 
+export interface ShopProfile {
+  shopName: string;
+  tagline: string;
+  ownerName: string;
+  phone: string;
+  email: string;
+  address: string;
+  gstin: string;
+  upiId: string;
+  printFooterNote: string;
+}
+
+export interface HardwareConfig {
+  printerWidth: "58mm" | "80mm";
+  autoPrintReceipts: boolean;
+  drawerKickCode: string;
+  soundAlerts: boolean;
+}
+
+export const DEFAULT_SHOP_PROFILE: ShopProfile = {
+  shopName: "Sarkar Communication",
+  tagline: "Digital Seva & Banking CSP",
+  ownerName: "Saikat Sarkar",
+  phone: "+91 98765 43210",
+  email: "support@sarkarcomm.in",
+  address: "Main Market, Station Road, West Bengal, India",
+  gstin: "19AAAAA0000A1Z5",
+  upiId: "sarkarcommunication@upi",
+  printFooterNote: "Thank You! Visit Again for Digital Seva & Banking.",
+};
+
+export const DEFAULT_HARDWARE_CONFIG: HardwareConfig = {
+  printerWidth: "80mm",
+  autoPrintReceipts: true,
+  drawerKickCode: "27,112,0,25,250",
+  soundAlerts: true,
+};
+
 // ==============================================================================
 // ZERO-DATA INITIAL STATE (Starting clean with ₹0.00 balances)
 // ==============================================================================

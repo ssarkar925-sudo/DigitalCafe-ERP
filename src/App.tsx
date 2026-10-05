@@ -26,7 +26,15 @@ import { CspKiosk } from "./components/CspKiosk";
 import { BbpsRechargeHub } from "./components/BbpsRechargeHub";
 import { KhataStockHub } from "./components/KhataStockHub";
 import { CashBookAccountsHub } from "./components/CashBookAccountsHub";
-import { StockMovement, KhataSettlement } from "./core/contracts";
+import { SettingsBackupHub } from "./components/SettingsBackupHub";
+import {
+  StockMovement,
+  KhataSettlement,
+  ShopProfile,
+  HardwareConfig,
+  DEFAULT_SHOP_PROFILE,
+  DEFAULT_HARDWARE_CONFIG,
+} from "./core/contracts";
 import { ArrowLeftRight, Landmark } from "lucide-react";
 
 export type NavTab = "dashboard" | "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
@@ -259,6 +267,35 @@ export function App() {
 
   const [creditCards] = useState<CreditCardItem[]>(INITIAL_CREDIT_CARDS);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+
+  // 7. Shop Profile & Hardware Configuration
+  const [shopProfile, setShopProfile] = useState<ShopProfile>(() => {
+    try {
+      const saved = localStorage.getItem("dc_shop_profile");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_SHOP_PROFILE;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("dc_shop_profile", JSON.stringify(shopProfile));
+    } catch (e) {}
+  }, [shopProfile]);
+
+  const [hardwareConfig, setHardwareConfig] = useState<HardwareConfig>(() => {
+    try {
+      const saved = localStorage.getItem("dc_hardware_config");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_HARDWARE_CONFIG;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("dc_hardware_config", JSON.stringify(hardwareConfig));
+    } catch (e) {}
+  }, [hardwareConfig]);
 
   // Cloud Sync on Mount (only if Supabase has real live data)
   useEffect(() => {
@@ -1161,6 +1198,47 @@ export function App() {
     showToast(`✓ Recorded Cash ${type} (${formatPaisa(amountPaisa)})`);
   };
 
+  // Full Database Backup Restore Handler
+  const handleRestoreAllData = (data: {
+    accounts?: TreasuryAccount[];
+    customers?: Customer[];
+    catalogItems?: CatalogItem[];
+    invoices?: InvoiceRecord[];
+    digitalTransactions?: DigitalTransaction[];
+    cashBookEntries?: CashBookEntry[];
+    shopProfile?: ShopProfile;
+    hardwareConfig?: HardwareConfig;
+  }) => {
+    if (data.accounts) setAccounts(data.accounts);
+    if (data.customers) setCustomers(data.customers);
+    if (data.catalogItems) setCatalogItems(data.catalogItems);
+    if (data.invoices) setInvoices(data.invoices);
+    if (data.digitalTransactions) setDigitalTransactions(data.digitalTransactions);
+    if (data.cashBookEntries) setCashBookEntries(data.cashBookEntries);
+    if (data.shopProfile) setShopProfile(data.shopProfile);
+    if (data.hardwareConfig) setHardwareConfig(data.hardwareConfig);
+    showToast("✓ All database records restored from JSON backup!");
+  };
+
+  // Factory Data Reset Handler
+  const handleResetFactoryData = () => {
+    localStorage.removeItem("dc_user_accounts");
+    localStorage.removeItem("dc_user_customers");
+    localStorage.removeItem("dc_user_catalog");
+    localStorage.removeItem("dc_user_invoices");
+    localStorage.removeItem("dc_csp_transactions");
+    localStorage.removeItem("dc_user_cashbook");
+    localStorage.removeItem("dc_day_close_audits");
+
+    setAccounts(INITIAL_ACCOUNTS);
+    setCustomers(INITIAL_CUSTOMERS);
+    setCatalogItems(INITIAL_CATALOG_ITEMS);
+    setInvoices([]);
+    setDigitalTransactions([]);
+    setCashBookEntries([]);
+    showToast("✓ Factory reset complete: All records cleared to initial state.");
+  };
+
   return (
     <div className="min-h-screen bg-slate-100/70 dark:bg-slate-900 text-slate-900 dark:text-slate-100 flex font-sans transition-colors duration-200">
       {/* 1. SIDEBAR */}
@@ -1292,13 +1370,21 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 6 SETTINGS */}
         {activeTab === "settings" && (
-          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">⚙️</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 6: Settings & Backup</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-              Shop profile, accounts manager, printer configurations, and local backup.
-            </p>
-          </div>
+          <SettingsBackupHub
+            shopProfile={shopProfile}
+            hardwareConfig={hardwareConfig}
+            onUpdateShopProfile={setShopProfile}
+            onUpdateHardwareConfig={setHardwareConfig}
+            accounts={accounts}
+            customers={customers}
+            catalogItems={catalogItems}
+            invoices={invoices}
+            digitalTransactions={digitalTransactions}
+            cashBookEntries={cashBookEntries}
+            onRestoreAllData={handleRestoreAllData}
+            onResetFactoryData={handleResetFactoryData}
+            showToast={showToast}
+          />
         )}
       </main>
 
