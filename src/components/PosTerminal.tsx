@@ -259,13 +259,22 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     setIsAddItemModalOpen(true);
   };
 
-  // Format Paisa to INR String
+  // Format Paisa to INR String (UI & HTML: ₹)
   const formatPaisa = (paisa: bigint) => {
     const isNeg = paisa < 0n;
     const abs = isNeg ? -paisa : paisa;
     const rupees = abs / 100n;
     const cents = (abs % 100n).toString().padStart(2, "0");
     return `${isNeg ? "-" : ""}₹${rupees.toLocaleString("en-IN")}.${cents}`;
+  };
+
+  // Format Paisa for jsPDF standard font (ASCII Rs. instead of Unicode ₹)
+  const formatPdfPaisa = (paisa: bigint) => {
+    const isNeg = paisa < 0n;
+    const abs = isNeg ? -paisa : paisa;
+    const rupees = abs / 100n;
+    const cents = (abs % 100n).toString().padStart(2, "0");
+    return `${isNeg ? "-" : ""}Rs. ${rupees.toLocaleString("en-IN")}.${cents}`;
   };
 
   // Filter Catalog Items
@@ -940,7 +949,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       const name = item.name.length > 22 ? item.name.substring(0, 20) + ".." : item.name;
       doc.text(name, 6, y);
       doc.text(`${item.quantity}`, 50, y);
-      doc.text(formatPaisa(item.totalPaisa), 74, y, { align: "right" });
+      doc.text(formatPdfPaisa(item.totalPaisa), 74, y, { align: "right" });
       y += 4;
     });
 
@@ -950,12 +959,12 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     doc.setFont("helvetica", "bold");
     doc.text("Subtotal:", 6, y);
-    doc.text(formatPaisa(inv.subtotalPaisa), 74, y, { align: "right" });
+    doc.text(formatPdfPaisa(inv.subtotalPaisa), 74, y, { align: "right" });
     y += 4;
 
     if (inv.discountPaisa > 0n) {
       doc.text("Discount:", 6, y);
-      doc.text(`-${formatPaisa(inv.discountPaisa)}`, 74, y, { align: "right" });
+      doc.text(`-${formatPdfPaisa(inv.discountPaisa)}`, 74, y, { align: "right" });
       y += 4;
     }
 
@@ -964,17 +973,17 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       doc.setFontSize(7);
       if (inv.totalTaxablePaisa) {
         doc.text("Taxable Value:", 6, y);
-        doc.text(formatPaisa(inv.totalTaxablePaisa), 74, y, { align: "right" });
+        doc.text(formatPdfPaisa(inv.totalTaxablePaisa), 74, y, { align: "right" });
         y += 3.5;
       }
       if (inv.totalCgstPaisa) {
         doc.text("CGST:", 6, y);
-        doc.text(formatPaisa(inv.totalCgstPaisa), 74, y, { align: "right" });
+        doc.text(formatPdfPaisa(inv.totalCgstPaisa), 74, y, { align: "right" });
         y += 3.5;
       }
       if (inv.totalSgstPaisa) {
         doc.text("SGST:", 6, y);
-        doc.text(formatPaisa(inv.totalSgstPaisa), 74, y, { align: "right" });
+        doc.text(formatPdfPaisa(inv.totalSgstPaisa), 74, y, { align: "right" });
         y += 3.5;
       }
       doc.setFont("helvetica", "bold");
@@ -982,7 +991,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     doc.setFontSize(9);
     doc.text("TOTAL PAID:", 6, y);
-    doc.text(formatPaisa(inv.totalPaisa), 74, y, { align: "right" });
+    doc.text(formatPdfPaisa(inv.totalPaisa), 74, y, { align: "right" });
     y += 5;
 
     if (inv.paymentMethod === "SPLIT" && inv.allocations && inv.allocations.length > 0) {
@@ -999,7 +1008,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             ? "UPI QR Paid"
             : "Khata (Udhaar Due)";
         doc.text(`  • ${label}:`, 6, y);
-        doc.text(formatPaisa(alloc.amountPaisa), 74, y, { align: "right" });
+        doc.text(formatPdfPaisa(alloc.amountPaisa), 74, y, { align: "right" });
         y += 4;
       });
       y += 2;

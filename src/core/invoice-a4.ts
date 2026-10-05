@@ -1,13 +1,18 @@
 import { jsPDF } from "jspdf";
 import { InvoiceRecord, ShopProfile, DEFAULT_SHOP_PROFILE } from "./contracts";
 
-export function formatInvoicePaisa(paisa: bigint): string {
+export function formatInvoicePaisa(paisa: bigint, useSymbol = true): string {
   const isNeg = paisa < 0n;
   const abs = isNeg ? -paisa : paisa;
   const rupees = Number(abs / 100n);
   const remainder = Number(abs % 100n);
   const formatted = remainder > 0 ? `${rupees}.${remainder.toString().padStart(2, "0")}` : `${rupees}`;
-  return `${isNeg ? "-" : ""}₹${formatted}`;
+  const prefix = useSymbol ? "₹" : "Rs. ";
+  return `${isNeg ? "-" : ""}${prefix}${formatted}`;
+}
+
+export function formatPdfCurrency(paisa: bigint): string {
+  return formatInvoicePaisa(paisa, false); // "Rs. XX.XX" for standard PDF Helvetica
 }
 
 /**
@@ -160,13 +165,13 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
 
     doc.setTextColor(15, 23, 42);
     doc.text(`${item.quantity}`, margin + 106, y + 4.5, { align: "right" });
-    doc.text(formatInvoicePaisa(item.unitPricePaisa), margin + 132, y + 4.5, { align: "right" });
+    doc.text(formatPdfCurrency(item.unitPricePaisa), margin + 132, y + 4.5, { align: "right" });
 
     const gstLabel = item.gstRatePercent ? `${item.gstRatePercent}%` : "0%";
     doc.text(gstLabel, margin + 152, y + 4.5, { align: "right" });
 
     doc.setFont("helvetica", "bold");
-    doc.text(formatInvoicePaisa(item.totalPaisa), margin + contentWidth - 3, y + 4.5, { align: "right" });
+    doc.text(formatPdfCurrency(item.totalPaisa), margin + contentWidth - 3, y + 4.5, { align: "right" });
 
     y += 6.5;
   });
@@ -202,7 +207,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     doc.setFontSize(7);
     inv.allocations.forEach((al, aIdx) => {
       const modeLabel = al.method === "CASH" ? "Cash Received" : al.method === "UPI" ? "UPI QR Paid" : "Khata Due";
-      doc.text(`  • ${modeLabel}: ${formatInvoicePaisa(al.amountPaisa)}`, margin, y + 25 + aIdx * 3.8);
+      doc.text(`  • ${modeLabel}: ${formatPdfCurrency(al.amountPaisa)}`, margin, y + 25 + aIdx * 3.8);
     });
   }
 
@@ -219,7 +224,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.text("Subtotal (Gross):", summaryBlockX + 4, sy);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(15, 23, 42);
-  doc.text(formatInvoicePaisa(inv.subtotalPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
+  doc.text(formatPdfCurrency(inv.subtotalPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
 
   if (inv.discountPaisa > 0n) {
     sy += 4.5;
@@ -227,7 +232,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     doc.setTextColor(225, 29, 72); // rose-600
     doc.text("Discount Applied:", summaryBlockX + 4, sy);
     doc.setFont("helvetica", "bold");
-    doc.text(`-${formatInvoicePaisa(inv.discountPaisa)}`, summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
+    doc.text(`-${formatPdfCurrency(inv.discountPaisa)}`, summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
   }
 
   if (inv.totalTaxablePaisa) {
@@ -235,7 +240,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     doc.setFont("helvetica", "normal");
     doc.setTextColor(71, 85, 105);
     doc.text("Taxable Value:", summaryBlockX + 4, sy);
-    doc.text(formatInvoicePaisa(inv.totalTaxablePaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
+    doc.text(formatPdfCurrency(inv.totalTaxablePaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
   }
 
   if (inv.totalCgstPaisa) {
@@ -243,7 +248,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     doc.setFont("helvetica", "normal");
     doc.setTextColor(71, 85, 105);
     doc.text("CGST (Central Tax):", summaryBlockX + 4, sy);
-    doc.text(formatInvoicePaisa(inv.totalCgstPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
+    doc.text(formatPdfCurrency(inv.totalCgstPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
   }
 
   if (inv.totalSgstPaisa) {
@@ -251,7 +256,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     doc.setFont("helvetica", "normal");
     doc.setTextColor(71, 85, 105);
     doc.text("SGST (State Tax):", summaryBlockX + 4, sy);
-    doc.text(formatInvoicePaisa(inv.totalSgstPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
+    doc.text(formatPdfCurrency(inv.totalSgstPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
   }
 
   // Grand Total bar
@@ -262,7 +267,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.text("GRAND TOTAL:", summaryBlockX + 4, sy + 5.5);
-  doc.text(formatInvoicePaisa(inv.totalPaisa), summaryBlockX + summaryBlockWidth - 4, sy + 5.5, { align: "right" });
+  doc.text(formatPdfCurrency(inv.totalPaisa), summaryBlockX + summaryBlockWidth - 4, sy + 5.5, { align: "right" });
 
   // --- SIGNATORY & FOOTER BLOCK ---
   y += 56;
