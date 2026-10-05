@@ -308,6 +308,38 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     return 0n;
   }, [cashTenderedPaisa, payableTotalPaisa]);
 
+  // Live Cart GST Breakdown Calculation
+  const liveTaxBreakdown = useMemo(() => {
+    let taxable = 0n;
+    let cgst = 0n;
+    let sgst = 0n;
+    let hasTax = false;
+
+    cart.forEach((c) => {
+      const rate = c.gstRatePercent || 0;
+      if (rate > 0) {
+        hasTax = true;
+        const itemTaxable = (c.totalPaisa * 100n) / BigInt(100 + rate);
+        const itemTax = c.totalPaisa - itemTaxable;
+        const itemCgst = itemTax / 2n;
+        const itemSgst = itemTax - itemCgst;
+        taxable += itemTaxable;
+        cgst += itemCgst;
+        sgst += itemSgst;
+      } else {
+        taxable += c.totalPaisa;
+      }
+    });
+
+    return {
+      hasTax,
+      taxablePaisa: taxable,
+      cgstPaisa: cgst,
+      sgstPaisa: sgst,
+      totalTaxPaisa: cgst + sgst,
+    };
+  }, [cart]);
+
   // Split Calculations (Cash + UPI QR + Khata Udhaar, filtered by selected splitMode)
   const splitCashPaisa = useMemo(() => {
     if (splitMode === "UPI_KHATA") return 0n;
@@ -1991,6 +2023,24 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       ))}
                     </div>
                   </div>
+
+                  {/* Live Itemized GST Breakdown (if applicable) */}
+                  {liveTaxBreakdown.hasTax && (
+                    <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 grid grid-cols-3 gap-1 text-[10px] bg-slate-100/70 dark:bg-slate-700/50 p-1.5 rounded-lg">
+                      <div className="flex flex-col">
+                        <span className="text-slate-400 font-medium">Taxable:</span>
+                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{formatPaisa(liveTaxBreakdown.taxablePaisa)}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-slate-400 font-medium">CGST:</span>
+                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{formatPaisa(liveTaxBreakdown.cgstPaisa)}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-slate-400 font-medium">SGST:</span>
+                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{formatPaisa(liveTaxBreakdown.sgstPaisa)}</span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Net Payable Display Banner */}
                   <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
