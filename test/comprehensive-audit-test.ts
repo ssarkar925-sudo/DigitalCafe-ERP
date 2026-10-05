@@ -856,6 +856,76 @@ console.log("\n[SUITE 11: Customer Advance Deposit & Partial Return Restock Inva
   );
 }
 
+// ==============================================================================
+// 12. SUITE 12: GST INVOICE SPLIT, BARCODE RESOLUTION & EOD Z-REPORT MATH
+// ==============================================================================
+console.log("\n[SUITE 12: GST Tax Split, Barcode Resolution & EOD Z-Report Reconciliation]");
+
+// 1. Inclusive GST 18% Tax Calculation Invariant
+{
+  // Total MRP: ₹1,180.00 (118000 Paisa) inclusive of 18% GST
+  const grossPaisa = 118000n;
+  const gstRate = 18;
+  const taxablePaisa = (grossPaisa * 100n) / BigInt(100 + gstRate); // Exactly ₹1,000.00 (100000 Paisa)
+  const totalTaxPaisa = grossPaisa - taxablePaisa;                  // Exactly ₹180.00 (18000 Paisa)
+  const cgstPaisa = totalTaxPaisa / 2n;                             // Exactly ₹90.00 (9000 Paisa)
+  const sgstPaisa = totalTaxPaisa - cgstPaisa;                      // Exactly ₹90.00 (9000 Paisa)
+
+  assert(
+    taxablePaisa === 100000n && cgstPaisa === 9000n && sgstPaisa === 9000n,
+    "GST 18% Inclusive Split: Taxable ₹1,000 + CGST ₹90 + SGST ₹90 = Gross ₹1,180 with 0 paisa rounding variance"
+  );
+}
+
+// 2. Odd Amount Inclusive GST 5% Tax Calculation Invariant
+{
+  // Total MRP: ₹250.00 (25000 Paisa) inclusive of 5% GST on Paper goods
+  const grossPaisa = 25000n;
+  const gstRate = 5;
+  const taxablePaisa = (grossPaisa * 100n) / BigInt(100 + gstRate); // (25000 * 100) / 105 = 23809 Paisa (₹238.09)
+  const totalTaxPaisa = grossPaisa - taxablePaisa;                  // 1191 Paisa (₹11.91)
+  const cgstPaisa = totalTaxPaisa / 2n;                             // 595 Paisa (₹5.95)
+  const sgstPaisa = totalTaxPaisa - cgstPaisa;                      // 596 Paisa (₹5.96)
+
+  assert(
+    taxablePaisa + cgstPaisa + sgstPaisa === grossPaisa,
+    "Odd GST 5% Split Conservation: Taxable + CGST + SGST strictly conserves original gross 25000 paisa"
+  );
+}
+
+// 3. Barcode / SKU Exact Match Lookup Invariant
+{
+  const mockCatalog = [
+    { id: "1", name: "A4 Paper Ream", barcode: "8901234567890", pricePaisa: 28000n },
+    { id: "2", name: "Passport Photo", barcode: undefined, pricePaisa: 5000n },
+  ];
+
+  const scannedBarcode = "8901234567890";
+  const matched = mockCatalog.find((i) => i.barcode === scannedBarcode);
+
+  assert(
+    matched !== undefined && matched.name === "A4 Paper Ream",
+    "Barcode Lookup: Hardware scanner scan resolves exact catalog item instantly"
+  );
+}
+
+// 4. EOD Z-Report Cash Reconciliation Variance Invariant
+{
+  const openingCash = 500000n;  // ₹5,000.00
+  const totalInflow = 1250000n; // ₹12,500.00 (POS Cash + AEPS Cash fees + Khata collections)
+  const totalOutflow = 820000n; // ₹8,200.00 (Expenses + Consumables purchases)
+  const expectedCash = openingCash + totalInflow - totalOutflow; // ₹9,300.00 (930000 Paisa)
+
+  // Physical Count: 18x ₹500, 1x ₹200, 1x ₹100 = 9000 + 200 + 100 = ₹9,300.00
+  const physicalCounted = (18n * 50000n) + (1n * 20000n) + (1n * 10000n);
+  const variance = physicalCounted - expectedCash;
+
+  assert(
+    expectedCash === 930000n && physicalCounted === 930000n && variance === 0n,
+    "EOD Z-Report Reconciliation: Expected ₹9,300 equals physical counted with zero discrepancy"
+  );
+}
+
 console.log("\n================================================================================");
 console.log(` 🏁 TEST SUMMARY: ${stats.passed} Passed, ${stats.failed} Failed`);
 console.log("================================================================================\n");

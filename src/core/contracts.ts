@@ -67,6 +67,9 @@ export interface CatalogItem {
   minStockAlert: number;
   hotkey?: string;
   icon: string;
+  barcode?: string;
+  hsnCode?: string;
+  gstRatePercent?: number; // e.g. 0, 5, 12, 18
 }
 
 export interface InvoiceItem {
@@ -77,6 +80,12 @@ export interface InvoiceItem {
   totalPaisa: bigint;
   kind?: ItemKind;
   returnedQuantity?: number;
+  barcode?: string;
+  hsnCode?: string;
+  gstRatePercent?: number;
+  taxableAmountPaisa?: bigint;
+  cgstPaisa?: bigint;
+  sgstPaisa?: bigint;
 }
 
 export type PaymentMethod = "CASH" | "UPI" | "KHATA" | "SPLIT";
@@ -88,9 +97,14 @@ export interface InvoiceRecord {
   time: string;
   customerName: string;
   customerPhone?: string;
+  customerGstin?: string;
   items: InvoiceItem[];
   subtotalPaisa: bigint;
   discountPaisa: bigint;
+  totalTaxablePaisa?: bigint;
+  totalCgstPaisa?: bigint;
+  totalSgstPaisa?: bigint;
+  totalTaxPaisa?: bigint;
   totalPaisa: bigint;
   paymentMethod: PaymentMethod;
   allocations?: {

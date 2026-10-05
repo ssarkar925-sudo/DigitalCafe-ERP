@@ -219,6 +219,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const [formCost, setFormCost] = useState("");
   const [formStock, setFormStock] = useState("999");
   const [formIcon, setFormIcon] = useState("📄");
+  const [formBarcode, setFormBarcode] = useState("");
+  const [formHsn, setFormHsn] = useState("");
+  const [formGstRate, setFormGstRate] = useState<number>(0);
 
   // Open Edit Modal with Pre-filled Values
   const handleOpenEditModal = (item: CatalogItem) => {
@@ -230,6 +233,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     setFormCost((Number(item.costPricePaisa) / 100).toFixed(2));
     setFormStock(item.currentStock.toString());
     setFormIcon(item.icon || "📄");
+    setFormBarcode(item.barcode || "");
+    setFormHsn(item.hsnCode || "");
+    setFormGstRate(item.gstRatePercent || 0);
   };
 
   // Open Add Modal
@@ -242,6 +248,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     setFormCost("");
     setFormStock("999");
     setFormIcon("📄");
+    setFormBarcode("");
+    setFormHsn("");
+    setFormGstRate(0);
     setIsAddItemModalOpen(true);
   };
 
@@ -257,9 +266,12 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   // Filter Catalog Items
   const filteredItems = useMemo(() => {
     return catalogItems.filter((item) => {
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase());
+        item.name.toLowerCase().includes(q) ||
+        item.category.toLowerCase().includes(q) ||
+        (item.barcode && item.barcode.toLowerCase().includes(q)) ||
+        (item.hsnCode && item.hsnCode.toLowerCase().includes(q));
       const matchesCat =
         selectedCategory === "All" || item.category === selectedCategory;
       return matchesSearch && matchesCat;
@@ -525,6 +537,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             costPricePaisa: item.costPricePaisa,
             totalPaisa: BigInt(qtyToAdd) * item.pricePaisa,
             kind: item.kind,
+            barcode: item.barcode,
+            hsnCode: item.hsnCode,
+            gstRatePercent: item.gstRatePercent,
           },
         ];
       }
@@ -628,6 +643,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         costPricePaisa: BigInt(Math.round(costNum * 100)),
         currentStock: stockNum,
         icon: formIcon || "📄",
+        barcode: formBarcode.trim() || undefined,
+        hsnCode: formHsn.trim() || undefined,
+        gstRatePercent: formGstRate > 0 ? formGstRate : undefined,
       };
       onEditCatalogItem(updated);
       syncCatalogItemToCloud(updated);
@@ -644,6 +662,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         currentStock: stockNum,
         minStockAlert: 10,
         icon: formIcon || "📄",
+        barcode: formBarcode.trim() || undefined,
+        hsnCode: formHsn.trim() || undefined,
+        gstRatePercent: formGstRate > 0 ? formGstRate : undefined,
       };
       onAddCatalogItem(newItem);
       syncCatalogItemToCloud(newItem);
@@ -729,6 +750,47 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       }
     }
 
+    // Calculate GST tax splits
+    let totalTaxablePaisa = 0n;
+    let totalCgstPaisa = 0n;
+    let totalSgstPaisa = 0n;
+
+    const mappedItems: InvoiceItem[] = cart.map((c) => {
+      const gstRate = c.gstRatePercent || 0;
+      let taxablePaisa = c.totalPaisa;
+      let cgst = 0n;
+      let sgst = 0n;
+
+      if (gstRate > 0) {
+        // Price is inclusive of GST: Taxable = (Total * 100) / (100 + Rate)
+        taxablePaisa = (c.totalPaisa * 100n) / BigInt(100 + gstRate);
+        const totalTax = c.totalPaisa - taxablePaisa;
+        cgst = totalTax / 2n;
+        sgst = totalTax - cgst; // Prevent 1 paisa rounding loss
+      }
+
+      totalTaxablePaisa += taxablePaisa;
+      totalCgstPaisa += cgst;
+      totalSgstPaisa += sgst;
+
+      return {
+        id: c.id,
+        name: c.name,
+        quantity: c.quantity,
+        unitPricePaisa: c.unitPricePaisa,
+        totalPaisa: c.totalPaisa,
+        kind: c.kind,
+        barcode: c.barcode,
+        hsnCode: c.hsnCode,
+        gstRatePercent: c.gstRatePercent,
+        taxableAmountPaisa: taxablePaisa,
+        cgstPaisa: cgst,
+        sgstPaisa: sgst,
+      };
+    });
+
+    const totalTaxPaisa = totalCgstPaisa + totalSgstPaisa;
+
     const newInvoice: InvoiceRecord = {
       id: `inv-${Date.now()}`,
       invoiceNumber: invoiceNum,
@@ -736,16 +798,13 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       time: timeStr,
       customerName: finalCustomerName,
       customerPhone: customerPhone.trim() || undefined,
-      items: cart.map((c) => ({
-        id: c.id,
-        name: c.name,
-        quantity: c.quantity,
-        unitPricePaisa: c.unitPricePaisa,
-        totalPaisa: c.totalPaisa,
-        kind: c.kind,
-      })),
+      items: mappedItems,
       subtotalPaisa,
       discountPaisa,
+      totalTaxablePaisa: totalTaxPaisa > 0n ? totalTaxablePaisa : undefined,
+      totalCgstPaisa: totalCgstPaisa > 0n ? totalCgstPaisa : undefined,
+      totalSgstPaisa: totalSgstPaisa > 0n ? totalSgstPaisa : undefined,
+      totalTaxPaisa: totalTaxPaisa > 0n ? totalTaxPaisa : undefined,
       totalPaisa: payableTotalPaisa,
       paymentMethod,
       allocations,
@@ -863,6 +922,27 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       y += 4;
     }
 
+    if (inv.totalTaxPaisa && inv.totalTaxPaisa > 0n) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      if (inv.totalTaxablePaisa) {
+        doc.text("Taxable Value:", 6, y);
+        doc.text(formatPaisa(inv.totalTaxablePaisa), 74, y, { align: "right" });
+        y += 3.5;
+      }
+      if (inv.totalCgstPaisa) {
+        doc.text("CGST:", 6, y);
+        doc.text(formatPaisa(inv.totalCgstPaisa), 74, y, { align: "right" });
+        y += 3.5;
+      }
+      if (inv.totalSgstPaisa) {
+        doc.text("SGST:", 6, y);
+        doc.text(formatPaisa(inv.totalSgstPaisa), 74, y, { align: "right" });
+        y += 3.5;
+      }
+      doc.setFont("helvetica", "bold");
+    }
+
     doc.setFontSize(9);
     doc.text("TOTAL PAID:", 6, y);
     doc.text(formatPaisa(inv.totalPaisa), 74, y, { align: "right" });
@@ -932,7 +1012,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         <body>
           <div class="center bold" style="font-size: 14px;">SARKAR COMMUNICATION</div>
           <div class="center">Digital Seva Kendra & CSP</div>
-          <div class="center">Phone: +91 98765 43210</div>
+          <div class="center">Phone: +91 98765 43210 • GSTIN: 19AAAAA0000A1Z5</div>
           <div class="divider"></div>
           <div>Inv: ${inv.invoiceNumber}</div>
           <div>Date: ${inv.date} ${inv.time}</div>
@@ -952,7 +1032,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 .map(
                   (i) => `
                 <tr>
-                  <td>${i.name}</td>
+                  <td>${i.name}${i.hsnCode ? ` <span style="font-size:9px;color:#555;">[HSN:${i.hsnCode}]</span>` : ""}</td>
                   <td class="center">${i.quantity}</td>
                   <td class="right">${formatPaisa(i.totalPaisa)}</td>
                 </tr>
@@ -970,6 +1050,15 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             ${
               inv.discountPaisa > 0n
                 ? `<tr><td>Discount</td><td class="right">-${formatPaisa(inv.discountPaisa)}</td></tr>`
+                : ""
+            }
+            ${
+              inv.totalTaxPaisa && inv.totalTaxPaisa > 0n
+                ? `
+                  ${inv.totalTaxablePaisa ? `<tr><td>Taxable Value</td><td class="right">${formatPaisa(inv.totalTaxablePaisa)}</td></tr>` : ""}
+                  ${inv.totalCgstPaisa ? `<tr><td>CGST</td><td class="right">${formatPaisa(inv.totalCgstPaisa)}</td></tr>` : ""}
+                  ${inv.totalSgstPaisa ? `<tr><td>SGST</td><td class="right">${formatPaisa(inv.totalSgstPaisa)}</td></tr>` : ""}
+                `
                 : ""
             }
             <tr class="bold" style="font-size: 13px;">
@@ -1211,7 +1300,22 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search services or products..."
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && searchQuery.trim()) {
+                      const trimmed = searchQuery.trim().toLowerCase();
+                      const exact = catalogItems.find(
+                        (i) =>
+                          (i.barcode && i.barcode.toLowerCase() === trimmed) ||
+                          i.name.toLowerCase() === trimmed
+                      );
+                      if (exact) {
+                        e.preventDefault();
+                        addToCart(exact, 1);
+                        setSearchQuery("");
+                      }
+                    }
+                  }}
+                  placeholder="Search item, scan barcode (press Enter to add)..."
                   className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 />
                 {searchQuery && (
@@ -2403,6 +2507,51 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 </div>
               </div>
 
+              {/* GST & Barcode Row */}
+              <div className="grid grid-cols-3 gap-2.5 p-2.5 bg-slate-50 dark:bg-slate-750 rounded-xl border border-slate-200/70 dark:border-slate-700">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                    GST Rate
+                  </label>
+                  <select
+                    value={formGstRate}
+                    onChange={(e) => setFormGstRate(parseInt(e.target.value, 10) || 0)}
+                    className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 dark:text-white"
+                  >
+                    <option value="0">0% (Exempt)</option>
+                    <option value="5">5% (Printing/Paper)</option>
+                    <option value="12">12% (Services)</option>
+                    <option value="18">18% (IT/Cyber/Hardware)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                    HSN / SAC Code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 998313"
+                    value={formHsn}
+                    onChange={(e) => setFormHsn(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                    Barcode / SKU
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Scan / Type"
+                    value={formBarcode}
+                    onChange={(e) => setFormBarcode(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                   Select Icon
@@ -2604,6 +2753,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     <tr>
                       <th className="p-3">Service / Product</th>
                       <th className="p-3">Category</th>
+                      <th className="p-3 text-center">GST % / HSN</th>
                       <th className="p-3 text-right">Sale Price</th>
                       <th className="p-3 text-right">Cost Price</th>
                       <th className="p-3 text-center">Margin</th>
@@ -2619,9 +2769,23 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-750/50">
                           <td className="p-3 flex items-center gap-2">
                             <span>{item.icon}</span>
-                            <span className="font-bold text-slate-900 dark:text-white">{item.name}</span>
+                            <div>
+                              <span className="font-bold text-slate-900 dark:text-white block">{item.name}</span>
+                              {item.barcode && (
+                                <span className="text-[9px] font-mono text-slate-400">Barcode: {item.barcode}</span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 text-slate-500">{item.category}</td>
+                          <td className="p-3 text-center">
+                            {item.gstRatePercent ? (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                                {item.gstRatePercent}% {item.hsnCode ? `(${item.hsnCode})` : ""}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">Exempt</span>
+                            )}
+                          </td>
                           <td className="p-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                             {formatPaisa(item.pricePaisa)}
                           </td>

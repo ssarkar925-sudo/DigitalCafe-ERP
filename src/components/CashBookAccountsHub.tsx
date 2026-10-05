@@ -267,6 +267,73 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
   const percentageUsedRegular = Number((totalBankCashWithdrawalsPaisa * 10000n) / regularThresholdPaisa) / 100;
 
   // Quick WhatsApp Day-End Summary
+  // 1-Click Thermal ESC/POS Z-Report
+  const handlePrintThermalZReport = () => {
+    const printWindow = window.open("", "_blank", "width=360,height=600");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Z-Report ${selectedDate}</title>
+          <style>
+            body {
+              font-family: 'Courier New', monospace;
+              width: 280px;
+              margin: 0 auto;
+              padding: 10px;
+              font-size: 11px;
+              color: #000;
+            }
+            .center { text-align: center; }
+            .right { text-align: right; }
+            .bold { font-weight: bold; }
+            .divider { border-top: 1px dashed #000; margin: 6px 0; }
+            table { width: 100%; font-size: 11px; }
+            td { padding: 2px 0; }
+            @media print {
+              body { width: 100%; margin: 0; padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="center bold" style="font-size: 14px;">SARKAR COMMUNICATION</div>
+          <div class="center">DAILY EOD RECONCILIATION Z-REPORT</div>
+          <div class="center">Date: ${selectedDate} | Time: ${timeStr}</div>
+          <div class="divider"></div>
+          <table>
+            <tr><td>Total Cash Inflow:</td><td class="right bold">+${formatPaisa(todayCashIn)}</td></tr>
+            <tr><td>Total Cash Outflow:</td><td class="right bold">-${formatPaisa(todayCashOut)}</td></tr>
+            <tr class="bold"><td>System Expected Cash:</td><td class="right">${formatPaisa(expectedCashPaisa)}</td></tr>
+            <tr class="bold"><td>Physical Counted Cash:</td><td class="right">${formatPaisa(physicalCountedPaisa)}</td></tr>
+            <tr class="bold"><td>Variance:</td><td class="right">${formatPaisa(cashVariancePaisa)}</td></tr>
+          </table>
+          <div class="divider"></div>
+          <div class="bold" style="margin-bottom: 2px;">PHYSICAL DENOMINATIONS:</div>
+          <table>
+            <tr><td>₹500 x ${denoms.n500}</td><td class="right">₹${(denoms.n500 * 500).toLocaleString("en-IN")}</td></tr>
+            <tr><td>₹200 x ${denoms.n200}</td><td class="right">₹${(denoms.n200 * 200).toLocaleString("en-IN")}</td></tr>
+            <tr><td>₹100 x ${denoms.n100}</td><td class="right">₹${(denoms.n100 * 100).toLocaleString("en-IN")}</td></tr>
+            <tr><td>₹50  x ${denoms.n50}</td><td class="right">₹${(denoms.n50 * 50).toLocaleString("en-IN")}</td></tr>
+            <tr><td>₹20  x ${denoms.n20}</td><td class="right">₹${(denoms.n20 * 20).toLocaleString("en-IN")}</td></tr>
+            <tr><td>₹10  x ${denoms.n10}</td><td class="right">₹${(denoms.n10 * 10).toLocaleString("en-IN")}</td></tr>
+            <tr><td>Loose Coins</td><td class="right">${formatPaisa(denoms.coinsPaisa)}</td></tr>
+          </table>
+          <div class="divider"></div>
+          <div class="center bold">STATUS: ${cashVariancePaisa === 0n ? "BALANCED (0 VARIANCE)" : "AUDIT DISCREPANCY"}</div>
+          <div class="center" style="font-size: 9px; margin-top: 4px;">Verified by Cashier / Shift In-Charge</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 300);
+  };
+
+  // Quick WhatsApp Day-End Summary
   const handleShareDayCloseWhatsApp = () => {
     const text =
       `*🏛️ SARKAR COMMUNICATION - DAY CLOSE CASH AUDIT*\n` +
@@ -748,7 +815,7 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
                   Saving this day-close creates a permanent audit record and freezes the shift book.
                 </p>
 
-                {/* Save and WhatsApp Buttons */}
+                {/* Save, Thermal Print, and WhatsApp Buttons */}
                 <div className="space-y-2 pt-2">
                   <button
                     type="button"
@@ -759,14 +826,24 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
                     Save & Lock Day Close Audit
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={handleShareDayCloseWhatsApp}
-                    className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    WhatsApp Summary to Owner
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePrintThermalZReport}
+                      className="py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Print Z-Report
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleShareDayCloseWhatsApp}
+                      className="py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      WhatsApp Owner
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -448,15 +448,23 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
 
   // WhatsApp Statement Dispatch
   const handleSendWhatsAppReminder = (c: Customer) => {
+    const dueRupees = (Number(c.currentDuePaisa) / 100).toFixed(2);
+    // Dynamic Merchant UPI Deep Link
+    const upiLink = `upi://pay?pa=sarkarcommunication@upi&pn=SarkarCommunication&am=${dueRupees}&cu=INR&tn=KhataPayment_${encodeURIComponent(c.name)}`;
+
     let msg = `🧾 *SARKAR COMMUNICATION - KHATA DUES STATEMENT*\n`;
     msg += `----------------------------------------\n`;
     msg += `👤 *Customer Name:* ${c.name}\n`;
     msg += `📅 *Statement Date:* ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}\n`;
     msg += `💳 *Credit Limit:* ${formatPaisa(c.creditLimitPaisa)}\n`;
     msg += `💰 *Current Outstanding Due:* ${formatPaisa(c.currentDuePaisa)}\n`;
+    if (c.advanceBalancePaisa && c.advanceBalancePaisa > 0n) {
+      msg += `✨ *Advance Credit Deposit:* ${formatPaisa(c.advanceBalancePaisa)}\n`;
+    }
     msg += `----------------------------------------\n`;
-    msg += `Dear customer, please clear your outstanding balance at our counter at your earliest convenience.\n\n`;
-    msg += `You can pay in Cash at the counter or scan our Soundbox QR on your next visit.\n\n`;
+    msg += `Dear customer, please clear your outstanding balance of *₹${dueRupees}* at your earliest convenience.\n\n`;
+    msg += `📲 *Pay Directly via UPI Link:* \n${upiLink}\n\n`;
+    msg += `You can also pay in Cash or scan our Counter Soundbox QR on your next visit.\n\n`;
     msg += `Thank you for your business!\n*Sarkar Communication • Digital Seva Hub*`;
 
     const phone = c.phone ? c.phone.replace(/\D/g, "") : "";
