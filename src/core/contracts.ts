@@ -305,6 +305,18 @@ export interface HardwareConfig {
   soundAlerts: boolean;
 }
 
+export interface WhatsAppConfig {
+  gatewayUrl: string;
+  gatewayApiKey?: string;
+  autoSendInvoice: boolean;
+  autoSendKhataReceipt: boolean;
+  autoSendCspSlip: boolean;
+  autoSendDayEndSummary: boolean;
+  defaultCountryCode: string;
+  ownerMobile: string;
+  customFooterNote?: string;
+}
+
 export const DEFAULT_OPERATORS: StaffOperator[] = [
   { id: "op-1", name: "Saikat Sarkar (Owner)", role: "ADMIN", pin: "1234", isActive: true },
   { id: "op-2", name: "Counter Operator 1", role: "CASHIER", pin: "0000", isActive: true },
@@ -327,6 +339,18 @@ export const DEFAULT_HARDWARE_CONFIG: HardwareConfig = {
   autoPrintReceipts: true,
   drawerKickCode: "27,112,0,25,250",
   soundAlerts: true,
+};
+
+export const DEFAULT_WHATSAPP_CONFIG: WhatsAppConfig = {
+  gatewayUrl: "http://localhost:3001",
+  gatewayApiKey: "",
+  autoSendInvoice: false,
+  autoSendKhataReceipt: false,
+  autoSendCspSlip: false,
+  autoSendDayEndSummary: false,
+  defaultCountryCode: "+91",
+  ownerMobile: "7003037208",
+  customFooterNote: "Thank you for visiting Sarkar Communication! 🙏",
 };
 
 // ==============================================================================

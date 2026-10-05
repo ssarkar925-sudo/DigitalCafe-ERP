@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   ShopProfile,
   HardwareConfig,
+  WhatsAppConfig,
   TreasuryAccount,
   Customer,
   CatalogItem,
@@ -10,6 +11,7 @@ import {
   CashBookEntry,
   DEFAULT_SHOP_PROFILE,
   DEFAULT_HARDWARE_CONFIG,
+  DEFAULT_WHATSAPP_CONFIG,
 } from "../core/contracts";
 import {
   Settings,
@@ -27,6 +29,11 @@ import {
   Server,
   Layers,
   Sparkles,
+  MessageSquare,
+  ExternalLink,
+  RefreshCw,
+  Smartphone,
+  Send,
 } from "lucide-react";
 
 interface SettingsBackupHubProps {
@@ -69,7 +76,63 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
   onResetFactoryData,
   showToast,
 }) => {
-  const [subTab, setSubTab] = useState<"profile" | "hardware" | "backup" | "cloud">("profile");
+  const [subTab, setSubTab] = useState<"profile" | "hardware" | "whatsapp" | "backup" | "cloud">("profile");
+
+  // WhatsApp Config State
+  const [waConfig, setWaConfig] = useState<WhatsAppConfig>(() => {
+    try {
+      const saved = localStorage.getItem("dc_whatsapp_config");
+      if (saved) return { ...DEFAULT_WHATSAPP_CONFIG, ...JSON.parse(saved) };
+    } catch (e) {
+      // fallback
+    }
+    return DEFAULT_WHATSAPP_CONFIG;
+  });
+
+  const [waPingStatus, setWaPingStatus] = useState<"IDLE" | "CHECKING" | "ONLINE" | "OFFLINE">("IDLE");
+  const [waPingDetail, setWaPingDetail] = useState<string>("");
+
+  const handleSaveWhatsApp = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      localStorage.setItem("dc_whatsapp_config", JSON.stringify(waConfig));
+      showToast("✓ WhatsApp Gateway settings saved!");
+    } catch (e) {
+      showToast("Error saving WhatsApp settings to local storage");
+    }
+  };
+
+  const handleTestWhatsAppConnection = async (targetUrl?: string) => {
+    const urlToCheck = (targetUrl || waConfig.gatewayUrl || "http://localhost:3001").replace(/\/+$/, "");
+    setWaPingStatus("CHECKING");
+    setWaPingDetail("Pinging health endpoint...");
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(`${urlToCheck}/health`, {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setWaPingStatus("ONLINE");
+        setWaPingDetail(`Online • Service: ${data.service || "WhatsApp Gateway"} • Mode: ${data.mode || "Connected"}`);
+        showToast("✓ WhatsApp Gateway is LIVE & REACHABLE!");
+      } else {
+        setWaPingStatus("OFFLINE");
+        setWaPingDetail(`Gateway returned HTTP ${res.status}: ${res.statusText}`);
+      }
+    } catch (err: any) {
+      setWaPingStatus("OFFLINE");
+      setWaPingDetail(
+        err.name === "AbortError"
+          ? "Connection timed out (Service may be asleep or unreachable)"
+          : `Connection failed: ${err.message || "Failed to fetch"}`
+      );
+    }
+  };
 
   // Profile Form State
   const [profileForm, setProfileForm] = useState<ShopProfile>(shopProfile);
@@ -341,6 +404,19 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
 
         <button
           type="button"
+          onClick={() => setSubTab("whatsapp")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            subTab === "whatsapp"
+              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-md"
+              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+        >
+          <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+          WhatsApp Gateway
+        </button>
+
+        <button
+          type="button"
           onClick={() => setSubTab("backup")}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
             subTab === "backup"
@@ -598,7 +674,328 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
       )}
 
       {/* ==================================================================== */}
-      {/* TAB 3: DATABASE BACKUP & RESTORE                                     */}
+      {/* TAB 3: WHATSAPP GATEWAY CONFIGURATION                                */}
+      {/* ==================================================================== */}
+      {subTab === "whatsapp" && (
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700/70 shadow-xs space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+            <div className="flex items-center gap-3">
+              <span className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                <MessageSquare className="w-6 h-6" />
+              </span>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  WhatsApp Messaging Gateway
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold">
+                    Baileys v6 & Cloud Engine
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Configure real-time slip delivery, automated transaction receipts, and customer notification endpoints.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Ping Status */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleTestWhatsAppConnection()}
+                disabled={waPingStatus === "CHECKING"}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${waPingStatus === "CHECKING" ? "animate-spin text-emerald-600" : ""}`} />
+                Test Connection
+              </button>
+
+              {waPingStatus === "ONLINE" && (
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-black flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Gateway Online
+                </span>
+              )}
+              {waPingStatus === "OFFLINE" && (
+                <span className="px-3 py-1.5 rounded-xl bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-black flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Offline / Asleep
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Diagnostics banner if pinged */}
+          {waPingDetail && (
+            <div
+              className={`p-3.5 rounded-xl text-xs font-medium flex items-center justify-between gap-3 ${
+                waPingStatus === "ONLINE"
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                  : waPingStatus === "OFFLINE"
+                  ? "bg-rose-50 dark:bg-rose-950/30 border border-rose-500/20 text-rose-800 dark:text-rose-300"
+                  : "bg-sky-50 dark:bg-sky-950/30 border border-sky-500/20 text-sky-800 dark:text-sky-300"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {waPingStatus === "ONLINE" ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : waPingStatus === "OFFLINE" ? (
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 text-sky-600 animate-spin shrink-0" />
+                )}
+                <span>{waPingDetail}</span>
+              </div>
+              <a
+                href={`${(waConfig.gatewayUrl || "http://localhost:3001").replace(/\/+$/, "")}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-bold underline hover:opacity-80 shrink-0"
+              >
+                Open Dashboard <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveWhatsApp} className="space-y-6 max-w-3xl">
+            {/* Gateway Presets */}
+            <div className="space-y-2">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                Select WhatsApp Gateway Server
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Preset 1: Local Baileys Gateway */}
+                <div
+                  onClick={() => {
+                    setWaConfig((prev) => ({ ...prev, gatewayUrl: "http://localhost:3001" }));
+                    handleTestWhatsAppConnection("http://localhost:3001");
+                  }}
+                  className={`p-4 rounded-xl border transition cursor-pointer text-left space-y-1 ${
+                    waConfig.gatewayUrl === "http://localhost:3001"
+                      ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-950 dark:text-emerald-100 shadow-xs"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black flex items-center gap-1.5">
+                      💻 Local PC Gateway (Port 3001)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded font-black bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      High Speed
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                    http://localhost:3001
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Runs directly on counter machine. Instant zero-latency dispatch via Baileys Multi-Device.
+                  </p>
+                </div>
+
+                {/* Preset 2: Render Cloud Service */}
+                <div
+                  onClick={() => {
+                    setWaConfig((prev) => ({ ...prev, gatewayUrl: "https://sccomm-whatsapp-gateway.onrender.com" }));
+                    handleTestWhatsAppConnection("https://sccomm-whatsapp-gateway.onrender.com");
+                  }}
+                  className={`p-4 rounded-xl border transition cursor-pointer text-left space-y-1 ${
+                    waConfig.gatewayUrl === "https://sccomm-whatsapp-gateway.onrender.com"
+                      ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-950 dark:text-emerald-100 shadow-xs"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black flex items-center gap-1.5">
+                      ☁️ Render Cloud Gateway (24/7)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded font-black bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+                      Cloud Always-On
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
+                    https://sccomm-whatsapp-gateway.onrender.com
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Hosted 24/7 on Render cloud with 5-min wakeup ping. Works even when counter PC is off.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom URL Input */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                Active Gateway URL Endpoint
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={waConfig.gatewayUrl}
+                  onChange={(e) => setWaConfig((prev) => ({ ...prev, gatewayUrl: e.target.value }))}
+                  placeholder="e.g. http://localhost:3001 or https://sccomm-whatsapp-gateway.onrender.com"
+                  className="flex-1 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleTestWhatsAppConnection()}
+                  className="px-4 py-2 rounded-xl bg-slate-800 dark:bg-slate-700 text-white text-xs font-bold hover:bg-slate-700 transition cursor-pointer"
+                >
+                  Ping
+                </button>
+              </div>
+            </div>
+
+            {/* Optional API Key & Country Code */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  Default Country Code
+                </label>
+                <input
+                  type="text"
+                  value={waConfig.defaultCountryCode}
+                  onChange={(e) => setWaConfig((prev) => ({ ...prev, defaultCountryCode: e.target.value }))}
+                  placeholder="+91"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  Owner Admin Mobile (Alerts)
+                </label>
+                <input
+                  type="text"
+                  value={waConfig.ownerMobile}
+                  onChange={(e) => setWaConfig((prev) => ({ ...prev, ownerMobile: e.target.value }))}
+                  placeholder="7003037208"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  Gateway API Key (Optional)
+                </label>
+                <input
+                  type="password"
+                  value={waConfig.gatewayApiKey || ""}
+                  onChange={(e) => setWaConfig((prev) => ({ ...prev, gatewayApiKey: e.target.value }))}
+                  placeholder="Leave empty if none"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Auto Dispatch Triggers */}
+            <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+              <span className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                Automated Background WhatsApp Dispatch
+              </span>
+
+              <div className="space-y-2.5">
+                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-750 transition">
+                  <input
+                    type="checkbox"
+                    checked={waConfig.autoSendInvoice}
+                    onChange={(e) => setWaConfig((prev) => ({ ...prev, autoSendInvoice: e.target.checked }))}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Auto-send POS Invoice on Sale Completion
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Dispatches itemized bill and payment confirmation whenever a customer phone number is captured.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-750 transition">
+                  <input
+                    type="checkbox"
+                    checked={waConfig.autoSendKhataReceipt}
+                    onChange={(e) => setWaConfig((prev) => ({ ...prev, autoSendKhataReceipt: e.target.checked }))}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Auto-send Khata Settlement Receipt & Remaining Balance
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Notifies customer immediately with credit voucher and updated ledger balance upon payment.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-750 transition">
+                  <input
+                    type="checkbox"
+                    checked={waConfig.autoSendCspSlip}
+                    onChange={(e) => setWaConfig((prev) => ({ ...prev, autoSendCspSlip: e.target.checked }))}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Auto-send Digital CSP / AEPS / DMT Cash Advice Slip
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Sends banking customer proof with RRN/UTR, cash disbursed, and fee breakdown.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-750 transition">
+                  <input
+                    type="checkbox"
+                    checked={waConfig.autoSendDayEndSummary}
+                    onChange={(e) => setWaConfig((prev) => ({ ...prev, autoSendDayEndSummary: e.target.checked }))}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Auto-send Day-End Cash & Revenue Summary to Owner
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Sends closing drawer count, day net profit, and total turnover to owner mobile upon day closure.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Custom WhatsApp Slip Footer Note */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                WhatsApp Slip Custom Footer Note
+              </label>
+              <input
+                type="text"
+                value={waConfig.customFooterNote || ""}
+                onChange={(e) => setWaConfig((prev) => ({ ...prev, customFooterNote: e.target.value }))}
+                placeholder="Thank you for visiting Sarkar Communication! 🙏"
+                className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            {/* Save Button */}
+            <div className="pt-2 flex items-center justify-between border-t border-slate-100 dark:border-slate-700">
+              <p className="text-[11px] text-slate-400">
+                Configurations are stored safely in local browser storage and persist across counter sessions.
+              </p>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Save WhatsApp Settings
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* TAB 4: DATABASE BACKUP & RESTORE                                     */}
       {/* ==================================================================== */}
       {subTab === "backup" && (
         <div className="space-y-6">
