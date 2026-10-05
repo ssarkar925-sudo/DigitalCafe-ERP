@@ -1477,6 +1477,7 @@ export function App() {
             onVoidInvoice={handleVoidInvoice}
             onRecordReturn={handleRecordReturn}
             timeStr={timeStr}
+            showToast={showToast}
           />
         )}
 
@@ -1490,6 +1491,7 @@ export function App() {
             onVoidDigitalTransaction={handleVoidDigitalTransaction}
             onAddAccount={handleAddAccount}
             onOpenAccountManager={() => setIsAccountManagerOpen(true)}
+            showToast={showToast}
           />
         )}
 
@@ -1503,6 +1505,7 @@ export function App() {
             onVoidDigitalTransaction={handleVoidDigitalTransaction}
             onAddAccount={handleAddAccount}
             onOpenAccountManager={() => setIsAccountManagerOpen(true)}
+            showToast={showToast}
           />
         )}
 

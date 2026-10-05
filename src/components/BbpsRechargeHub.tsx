@@ -9,6 +9,7 @@ import {
   createRechargeUtilityJournal,
   JournalEntry,
 } from "../core/ledger";
+import { sendWhatsAppMessage } from "../core/whatsapp";
 import { jsPDF } from "jspdf";
 import {
   Zap,
@@ -68,6 +69,7 @@ export interface BbpsRechargeHubProps {
   onVoidDigitalTransaction?: (txnId: string) => void;
   onAddAccount?: (account: TreasuryAccount) => void;
   onOpenAccountManager?: () => void;
+  showToast?: (msg: string) => void;
 }
 
 export const BbpsRechargeHub: React.FC<BbpsRechargeHubProps> = ({
@@ -78,6 +80,7 @@ export const BbpsRechargeHub: React.FC<BbpsRechargeHubProps> = ({
   onVoidDigitalTransaction,
   onAddAccount,
   onOpenAccountManager,
+  showToast,
 }) => {
   // Navigation Sub-Tabs
   const [activeTab, setActiveTab] = useState<"utility" | "recharge" | "gaming" | "register">("utility");
@@ -1002,7 +1005,7 @@ export const BbpsRechargeHub: React.FC<BbpsRechargeHubProps> = ({
     printWindow.document.close();
   };
 
-  const handleShareWhatsApp = (txn: DigitalTransaction) => {
+  const handleShareWhatsApp = async (txn: DigitalTransaction) => {
     let msg = `⚡ *SARKAR COMMUNICATION - DIGITAL RECEIPT*\n`;
     msg += `----------------------------------------\n`;
     msg += `📄 *Receipt No:* ${txn.id}\n`;
@@ -1031,11 +1034,9 @@ export const BbpsRechargeHub: React.FC<BbpsRechargeHubProps> = ({
     msg += `Thank you for choosing Sarkar Communication!`;
 
     const phone = txn.customerMobile ? txn.customerMobile.replace(/\D/g, "") : "";
-    const cleanPhone = phone.length === 10 ? `91${phone}` : phone;
-    const url = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
+    await sendWhatsAppMessage(phone, msg, (toastMsg) => {
+      if (showToast) showToast(toastMsg);
+    });
   };
 
   // Day Register Filter & Stats

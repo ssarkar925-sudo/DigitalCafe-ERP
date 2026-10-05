@@ -13,6 +13,7 @@ import {
   createExpenseJournal,
   JournalEntry,
 } from "../core/ledger";
+import { sendWhatsAppMessage } from "../core/whatsapp";
 import { jsPDF } from "jspdf";
 import {
   Users,
@@ -446,8 +447,8 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
     return { custInvoices, custCsp, custSettlements };
   }, [statementCustomer, invoices, digitalTransactions, settlements]);
 
-  // WhatsApp Statement Dispatch
-  const handleSendWhatsAppReminder = (c: Customer) => {
+  // WhatsApp Statement Dispatch (1-Click)
+  const handleSendWhatsAppReminder = async (c: Customer) => {
     const dueRupees = (Number(c.currentDuePaisa) / 100).toFixed(2);
     // Dynamic Merchant UPI Deep Link
     const upiLink = `upi://pay?pa=sarkarcommunication@upi&pn=SarkarCommunication&am=${dueRupees}&cu=INR&tn=KhataPayment_${encodeURIComponent(c.name)}`;
@@ -468,15 +469,13 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
     msg += `Thank you for your business!\n*Sarkar Communication • Digital Seva Hub*`;
 
     const phone = c.phone ? c.phone.replace(/\D/g, "") : "";
-    const cleanPhone = phone.length === 10 ? `91${phone}` : phone;
-    const url = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
+    await sendWhatsAppMessage(phone, msg, (toastMsg) => {
+      if (showToast) showToast(toastMsg);
+    });
   };
 
-  // WhatsApp Settlement Slip Dispatch
-  const handleSendSettlementWhatsApp = (s: KhataSettlement) => {
+  // WhatsApp Settlement Slip Dispatch (1-Click)
+  const handleSendSettlementWhatsApp = async (s: KhataSettlement) => {
     let msg = `✅ *SARKAR COMMUNICATION - KHATA PAYMENT RECEIPT*\n`;
     msg += `----------------------------------------\n`;
     msg += `📄 *Receipt No:* ${s.id}\n`;
@@ -491,11 +490,9 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
     msg += `*Sarkar Communication*`;
 
     const phone = s.customerPhone ? s.customerPhone.replace(/\D/g, "") : "";
-    const cleanPhone = phone.length === 10 ? `91${phone}` : phone;
-    const url = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
+    await sendWhatsAppMessage(phone, msg, (toastMsg) => {
+      if (showToast) showToast(toastMsg);
+    });
   };
 
   // Filtered Customers

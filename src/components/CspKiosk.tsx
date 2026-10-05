@@ -11,6 +11,7 @@ import {
   createUpiCashoutJournal,
   JournalEntry,
 } from "../core/ledger";
+import { sendWhatsAppMessage } from "../core/whatsapp";
 import { jsPDF } from "jspdf";
 import {
   Landmark,
@@ -63,6 +64,7 @@ interface CspKioskProps {
   onVoidDigitalTransaction?: (txnId: string) => void;
   onAddAccount?: (account: TreasuryAccount) => void;
   onOpenAccountManager?: () => void;
+  showToast?: (msg: string) => void;
 }
 
 export const CspKiosk: React.FC<CspKioskProps> = ({
@@ -73,6 +75,7 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
   onVoidDigitalTransaction,
   onAddAccount,
   onOpenAccountManager,
+  showToast,
 }) => {
   // Navigation sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<"aeps" | "dmt" | "cashout" | "register">("aeps");
@@ -842,9 +845,8 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
     }, 250);
   };
 
-  const handleWhatsApp = (txn: DigitalTransaction) => {
+  const handleWhatsApp = async (txn: DigitalTransaction) => {
     const phone = txn.customerMobile ? txn.customerMobile.replace(/\D/g, "") : "";
-    const cleanPhone = phone.length === 10 ? `91${phone}` : phone;
 
     const text =
       `*SARKAR COMMUNICATION — BANKING CSP SLIP*\n` +
@@ -860,10 +862,9 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
       `--------------------------------\n` +
       `Thank you for visiting Sarkar Communication!`;
 
-    const url = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, "_blank");
+    await sendWhatsAppMessage(phone, text, (toastMsg) => {
+      if (showToast) showToast(toastMsg);
+    });
   };
 
   return (

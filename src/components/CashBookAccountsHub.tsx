@@ -8,6 +8,7 @@ import {
   NoteDenominations,
   DayCloseAudit,
 } from "../core/contracts";
+import { sendWhatsAppMessage, getSavedWhatsAppConfig } from "../core/whatsapp";
 import {
   Wallet,
   ArrowDownLeft,
@@ -333,8 +334,8 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
     }, 300);
   };
 
-  // Quick WhatsApp Day-End Summary
-  const handleShareDayCloseWhatsApp = () => {
+  // Quick 1-Click WhatsApp Day-End Summary
+  const handleShareDayCloseWhatsApp = async () => {
     const text =
       `*🏛️ SARKAR COMMUNICATION - DAY CLOSE CASH AUDIT*\n` +
       `📅 *Date:* ${selectedDate} | *Time:* ${timeStr}\n\n` +
@@ -353,7 +354,9 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
       `📉 *Today Outflow:* -${formatPaisa(todayCashOut)}\n` +
       `✨ *Verified & Generated via DigitalCafe ERP*`;
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    const config = getSavedWhatsAppConfig();
+    const ownerPhone = config.ownerMobile || "";
+    await sendWhatsAppMessage(ownerPhone, text, (toastMsg) => showToast(toastMsg));
   };
 
   return (

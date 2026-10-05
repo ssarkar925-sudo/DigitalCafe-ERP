@@ -11,6 +11,7 @@ import {
 } from "../core/contracts";
 import { createPosSaleJournal, JournalEntry } from "../core/ledger";
 import { syncInvoiceToCloud, syncCatalogItemToCloud } from "../core/supabase";
+import { sendWhatsAppMessage } from "../core/whatsapp";
 import { jsPDF } from "jspdf";
 import {
   Search,
@@ -74,6 +75,7 @@ interface PosTerminalProps {
   onVoidInvoice?: (invoiceId: string) => void;
   onRecordReturn?: (params: { returnRecord: ReturnRecord; refundDeltaPaisa: bigint }) => void;
   timeStr: string;
+  showToast?: (msg: string) => void;
 }
 
 interface CartItem extends InvoiceItem {
@@ -109,6 +111,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   onVoidInvoice,
   onRecordReturn,
   timeStr,
+  showToast,
 }) => {
   // --- View Mode: Grid vs List ---
   const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
@@ -1125,8 +1128,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     }, 300);
   };
 
-  // 3. Direct WhatsApp Dispatch
-  const handleWhatsAppDispatch = (inv: InvoiceRecord) => {
+  // 3. Direct 1-Click WhatsApp Dispatch (Gateway with wa.me fallback)
+  const handleWhatsAppDispatch = async (inv: InvoiceRecord) => {
     const phone = inv.customerPhone?.replace(/[^0-9]/g, "") || "";
     const itemsList = inv.items.map((i) => `• ${i.name} x${i.quantity} = ${formatPaisa(i.totalPaisa)}`).join("\n");
     let paymentText = `*Payment:* Paid via ${inv.paymentMethod} ✅`;
@@ -1151,9 +1154,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       `${paymentText}\n\n` +
       `Thank you for visiting Sarkar Communication! 🙏`;
 
-    const encoded = encodeURIComponent(msg);
-    const url = phone ? `https://wa.me/91${phone}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
-    window.open(url, "_blank");
+    await sendWhatsAppMessage(phone, msg, (toastMsg) => {
+      if (showToast) showToast(toastMsg);
+    });
   };
 
   // Category Multi-Colour Themes (Avoids pure black, vibrant cards in light & dark mode)
