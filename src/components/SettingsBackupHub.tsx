@@ -106,6 +106,8 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
           ...c,
           currentDuePaisa: c.currentDuePaisa.toString(),
           creditLimitPaisa: c.creditLimitPaisa.toString(),
+          advanceBalancePaisa: (c.advanceBalancePaisa || 0n).toString(),
+          loyaltyPointsPaisa: (c.loyaltyPointsPaisa || 0n).toString(),
         })),
         catalogItems: catalogItems.map((i) => ({
           ...i,
@@ -116,11 +118,19 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
           ...inv,
           subtotalPaisa: inv.subtotalPaisa.toString(),
           discountPaisa: inv.discountPaisa.toString(),
+          totalTaxablePaisa: inv.totalTaxablePaisa?.toString(),
+          totalCgstPaisa: inv.totalCgstPaisa?.toString(),
+          totalSgstPaisa: inv.totalSgstPaisa?.toString(),
+          totalTaxPaisa: inv.totalTaxPaisa?.toString(),
           totalPaisa: inv.totalPaisa.toString(),
+          returnedPaisa: inv.returnedPaisa?.toString(),
           items: inv.items.map((it) => ({
             ...it,
             unitPricePaisa: it.unitPricePaisa.toString(),
             totalPaisa: it.totalPaisa.toString(),
+            taxableAmountPaisa: it.taxableAmountPaisa?.toString(),
+            cgstPaisa: it.cgstPaisa?.toString(),
+            sgstPaisa: it.sgstPaisa?.toString(),
           })),
           allocations: inv.allocations?.map((al) => ({
             ...al,
@@ -187,6 +197,8 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
             ...c,
             currentDuePaisa: BigInt(c.currentDuePaisa || 0),
             creditLimitPaisa: BigInt(c.creditLimitPaisa || 200000),
+            advanceBalancePaisa: c.advanceBalancePaisa ? BigInt(c.advanceBalancePaisa) : 0n,
+            loyaltyPointsPaisa: c.loyaltyPointsPaisa ? BigInt(c.loyaltyPointsPaisa) : 0n,
           }));
         }
 
@@ -205,13 +217,21 @@ export const SettingsBackupHub: React.FC<SettingsBackupHubProps> = ({
             ...inv,
             subtotalPaisa: BigInt(inv.subtotalPaisa || 0),
             discountPaisa: BigInt(inv.discountPaisa || 0),
+            totalTaxablePaisa: inv.totalTaxablePaisa ? BigInt(inv.totalTaxablePaisa) : undefined,
+            totalCgstPaisa: inv.totalCgstPaisa ? BigInt(inv.totalCgstPaisa) : undefined,
+            totalSgstPaisa: inv.totalSgstPaisa ? BigInt(inv.totalSgstPaisa) : undefined,
+            totalTaxPaisa: inv.totalTaxPaisa ? BigInt(inv.totalTaxPaisa) : undefined,
             totalPaisa: BigInt(inv.totalPaisa || 0),
-            items: inv.items.map((it: any) => ({
+            returnedPaisa: inv.returnedPaisa ? BigInt(inv.returnedPaisa) : undefined,
+            items: (inv.items || []).map((it: any) => ({
               ...it,
               unitPricePaisa: BigInt(it.unitPricePaisa || 0),
               totalPaisa: BigInt(it.totalPaisa || 0),
+              taxableAmountPaisa: it.taxableAmountPaisa ? BigInt(it.taxableAmountPaisa) : undefined,
+              cgstPaisa: it.cgstPaisa ? BigInt(it.cgstPaisa) : undefined,
+              sgstPaisa: it.sgstPaisa ? BigInt(it.sgstPaisa) : undefined,
             })),
-            allocations: inv.allocations?.map((al: any) => ({
+            allocations: (inv.allocations || []).map((al: any) => ({
               ...al,
               amountPaisa: BigInt(al.amountPaisa || 0),
             })),

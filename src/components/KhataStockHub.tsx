@@ -1071,6 +1071,15 @@ export const KhataStockHub: React.FC<KhataStockHubProps> = ({
                           </span>
                         </div>
 
+                        {c.loyaltyPointsPaisa && c.loyaltyPointsPaisa > 0n ? (
+                          <div className="flex justify-between items-center text-[11px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg border border-indigo-200/60 dark:border-indigo-800/60">
+                            <span>🎁 Loyalty Reward:</span>
+                            <span className="font-mono">
+                              {formatPaisa(c.loyaltyPointsPaisa)} ({Number(c.loyaltyPointsPaisa)} pts)
+                            </span>
+                          </div>
+                        ) : null}
+
                         {/* Progress Bar */}
                         <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                           <div

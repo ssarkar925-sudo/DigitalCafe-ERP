@@ -51,6 +51,8 @@ export interface Customer {
   currentDuePaisa: bigint;
   creditLimitPaisa: bigint;
   advanceBalancePaisa?: bigint;
+  loyaltyPointsPaisa?: bigint; // ₹1 per 100 points
+  walletBalancePaisa?: bigint;
   createdAt?: string;
 }
 

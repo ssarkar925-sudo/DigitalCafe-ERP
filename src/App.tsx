@@ -118,6 +118,8 @@ export function App() {
             currentDuePaisa: BigInt(c.currentDuePaisa || 0),
             creditLimitPaisa: BigInt(c.creditLimitPaisa || 200000),
             advanceBalancePaisa: BigInt(c.advanceBalancePaisa || 0),
+            loyaltyPointsPaisa: BigInt(c.loyaltyPointsPaisa || 0),
+            walletBalancePaisa: BigInt(c.walletBalancePaisa || 0),
           }));
         }
       }
@@ -132,6 +134,8 @@ export function App() {
         currentDuePaisa: c.currentDuePaisa.toString(),
         creditLimitPaisa: c.creditLimitPaisa.toString(),
         advanceBalancePaisa: (c.advanceBalancePaisa || 0n).toString(),
+        loyaltyPointsPaisa: (c.loyaltyPointsPaisa || 0n).toString(),
+        walletBalancePaisa: (c.walletBalancePaisa || 0n).toString(),
       }));
       localStorage.setItem("dc_user_customers", JSON.stringify(serializable));
     } catch (e) {}
@@ -632,6 +636,24 @@ export function App() {
           ];
         }
       });
+    }
+
+    // 6. Award Customer Loyalty Points (2% reward: 1 paisa for every 50 paisa spent)
+    if (invoice.totalPaisa > 0n && (customerPhone || invoice.customerName !== "Walk-in Customer")) {
+      const earnedLoyaltyPaisa = invoice.totalPaisa / 50n;
+      if (earnedLoyaltyPaisa > 0n) {
+        setCustomers((prev) =>
+          prev.map((c) =>
+            (customerPhone && c.phone === customerPhone) ||
+            c.name.toLowerCase() === invoice.customerName.toLowerCase()
+              ? {
+                  ...c,
+                  loyaltyPointsPaisa: (c.loyaltyPointsPaisa || 0n) + earnedLoyaltyPaisa,
+                }
+              : c
+          )
+        );
+      }
     }
 
     showToast(`✓ Sale #${invoice.invoiceNumber} Completed (${formatPaisa(invoice.totalPaisa)})`);

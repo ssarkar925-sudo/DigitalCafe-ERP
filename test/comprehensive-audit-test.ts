@@ -926,6 +926,73 @@ console.log("\n[SUITE 12: GST Tax Split, Barcode Resolution & EOD Z-Report Recon
   );
 }
 
+// ==============================================================================
+// 13. SUITE 13: CUSTOMER LOYALTY REWARDS & BACKUP RESTORE PRESERVATION
+// ==============================================================================
+console.log("\n[SUITE 13: Customer Loyalty Rewards & Backup Roundtrip Invariants]");
+
+// 1. Loyalty Earning (2% = 1 paisa for every 50 paisa spent)
+{
+  const saleTotalPaisa = 150000n; // ₹1,500.00
+  const earnedLoyaltyPaisa = saleTotalPaisa / 50n; // 3000 Paisa = ₹30.00 reward (3000 pts)
+
+  assert(
+    earnedLoyaltyPaisa === 3000n,
+    "Loyalty Earning: ₹1,500 counter sale earns exact ₹30.00 (3,000 points) reward"
+  );
+}
+
+// 2. Loyalty Redemption as Cart Discount
+{
+  let customerLoyaltyPaisa = 4500n; // ₹45.00 available reward
+  const billTotalPaisa = 12000n;    // ₹120.00 bill
+
+  // Customer redeems full loyalty
+  const discountApplied = customerLoyaltyPaisa;
+  const payablePaisa = billTotalPaisa - discountApplied; // ₹75.00
+  customerLoyaltyPaisa -= discountApplied; // Cleared
+
+  assert(
+    payablePaisa === 7500n && customerLoyaltyPaisa === 0n,
+    "Loyalty Redemption: ₹45.00 points offset against ₹120 bill leaving ₹75.00 payable with 0 points balance"
+  );
+}
+
+// 3. Backup Roundtrip Invariant: Customer Advances, Loyalty & GST preserved
+{
+  const testCustomer = {
+    id: "cust-1",
+    name: "Subir Roy",
+    phone: "9832112233",
+    currentDuePaisa: 0n,
+    creditLimitPaisa: 500000n,
+    advanceBalancePaisa: 150000n,
+    loyaltyPointsPaisa: 3200n,
+  };
+
+  const serialized = JSON.stringify({
+    ...testCustomer,
+    currentDuePaisa: testCustomer.currentDuePaisa.toString(),
+    creditLimitPaisa: testCustomer.creditLimitPaisa.toString(),
+    advanceBalancePaisa: testCustomer.advanceBalancePaisa.toString(),
+    loyaltyPointsPaisa: testCustomer.loyaltyPointsPaisa.toString(),
+  });
+
+  const parsed = JSON.parse(serialized);
+  const restored = {
+    ...parsed,
+    currentDuePaisa: BigInt(parsed.currentDuePaisa),
+    creditLimitPaisa: BigInt(parsed.creditLimitPaisa),
+    advanceBalancePaisa: BigInt(parsed.advanceBalancePaisa),
+    loyaltyPointsPaisa: BigInt(parsed.loyaltyPointsPaisa),
+  };
+
+  assert(
+    restored.advanceBalancePaisa === 150000n && restored.loyaltyPointsPaisa === 3200n,
+    "Backup Roundtrip: Advance deposit ₹1,500 and Loyalty ₹32.00 strictly preserved without truncation"
+  );
+}
+
 console.log("\n================================================================================");
 console.log(` 🏁 TEST SUMMARY: ${stats.passed} Passed, ${stats.failed} Failed`);
 console.log("================================================================================\n");

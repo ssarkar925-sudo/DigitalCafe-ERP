@@ -1842,6 +1842,26 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
             </div>
           )}
 
+          {/* Loyalty Reward Points Badge & 1-Click Redeem */}
+          {selectedCustomerRecord && selectedCustomerRecord.loyaltyPointsPaisa && selectedCustomerRecord.loyaltyPointsPaisa > 0n && (
+            <div className="shrink-0 mb-2 p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between text-[10px] font-bold text-indigo-800 dark:text-indigo-300">
+              <span className="flex items-center gap-1.5">
+                <span>🎁</span>
+                Loyalty Reward: {formatPaisa(selectedCustomerRecord.loyaltyPointsPaisa)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const ptsRupees = (Number(selectedCustomerRecord.loyaltyPointsPaisa) / 100).toFixed(2);
+                  setDiscountRupees(ptsRupees);
+                }}
+                className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[9px] cursor-pointer shadow-xs"
+              >
+                Redeem as Discount
+              </button>
+            </div>
+          )}
+
           {/* Scrollable Cart Items List (flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5) */}
           <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5">
             {cart.length === 0 ? (
