@@ -184,7 +184,10 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
   }, [portalAccounts, aepsPortalId]);
 
   // Default AEPS Commission calculation table (standard Indian BC slabs)
-  const aepsCommissionPaisa = useMemo(() => {
+  // Manual override for portal commission (empty string = use standard slab)
+  const [aepsCommissionOverride, setAepsCommissionOverride] = useState<string>("");
+
+  const aepsSlabCommissionPaisa = useMemo(() => {
     const amt = parseFloat(aepsAmount) || 0;
     if (amt <= 0) return 0n;
     if (amt < 500) return 50n;        // ₹0.50
@@ -194,6 +197,13 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
     if (amt < 3000) return 600n;      // ₹6.00
     return 800n;                      // ₹8.00 (Standard ₹3000+ max commission)
   }, [aepsAmount]);
+
+  const aepsCommissionPaisa = useMemo(() => {
+    if (aepsCommissionOverride.trim() === "") return aepsSlabCommissionPaisa;
+    const num = parseFloat(aepsCommissionOverride);
+    if (isNaN(num) || num < 0) return 0n;
+    return BigInt(Math.round(num * 100));
+  }, [aepsCommissionOverride, aepsSlabCommissionPaisa]);
 
   const aepsAmountPaisa = useMemo(() => {
     const num = parseFloat(aepsAmount) || 0;
@@ -433,12 +443,14 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
   }, [dmtAmount]);
 
   const dmtCustomerFeePaisa = useMemo(() => {
-    const pct = parseFloat(dmtCustomerFeePct) || 1.0;
+    const raw = parseFloat(dmtCustomerFeePct);
+    const pct = isNaN(raw) || raw < 0 ? 0 : raw;
     return (dmtAmountPaisa * BigInt(Math.round(pct * 100))) / 10000n;
   }, [dmtAmountPaisa, dmtCustomerFeePct]);
 
   const dmtPortalSurchargePaisa = useMemo(() => {
-    const pct = parseFloat(dmtPortalSurchargePct) || 0.4;
+    const raw = parseFloat(dmtPortalSurchargePct);
+    const pct = isNaN(raw) || raw < 0 ? 0 : raw;
     return (dmtAmountPaisa * BigInt(Math.round(pct * 100))) / 10000n;
   }, [dmtAmountPaisa, dmtPortalSurchargePct]);
 
@@ -1146,23 +1158,74 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                 </div>
               </div>
 
-              {/* Fee Mode & Fee Amount */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                    Counter Convenience Fee (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="5"
-                    value={aepsCustomFee}
-                    onChange={(e) => setAepsCustomFee(e.target.value)}
-                    placeholder="0"
-                    className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-emerald-500"
-                  />
+              {/* Fee & Commission Pricing Engine */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-750/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    💰 Fee &amp; Commission Pricing Engine
+                  </span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                    Total Earnings: {formatPaisa(aepsNetProfitPaisa)}
+                  </span>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">Portal Commission (₹)</label>
+                      <span className="text-[9px] text-slate-400">Paid by Bank</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={aepsCommissionOverride}
+                      onChange={(e) => setAepsCommissionOverride(e.target.value)}
+                      placeholder={(Number(aepsSlabCommissionPaisa) / 100).toFixed(2)}
+                      className="w-full bg-white dark:bg-slate-700 border border-emerald-300 dark:border-emerald-700 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-emerald-500"
+                    />
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">
+                      Standard slab: {formatPaisa(aepsSlabCommissionPaisa)}
+                      {aepsCommissionOverride.trim() !== "" && (
+                        <button type="button" onClick={() => setAepsCommissionOverride("")} className="ml-1.5 text-emerald-600 font-bold hover:underline cursor-pointer">
+                          Reset
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-purple-800 dark:text-purple-300">Customer Fee (₹)</label>
+                      <span className="text-[9px] text-slate-400">Charged at Counter</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="5"
+                      value={aepsCustomFee}
+                      onChange={(e) => setAepsCustomFee(e.target.value)}
+                      placeholder="0"
+                      className="w-full bg-white dark:bg-slate-700 border border-purple-300 dark:border-purple-700 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-purple-500"
+                    />
+                    <div className="flex gap-1 mt-1">
+                      {["0", "10", "20", "30", "50"].map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => setAepsCustomFee(f)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold cursor-pointer ${
+                            aepsCustomFee === f ? "bg-purple-600 text-white" : "bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"
+                          }`}
+                        >
+                          ₹{f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
+              {/* Fee Collection Mode */}
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                     Fee Collection Mode
@@ -1341,6 +1404,20 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                     onChange={(e) => setDmtAmount(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-sky-500"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {["1000", "2000", "5000", "10000", "25000"].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setDmtAmount(amt)}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold cursor-pointer ${
+                          dmtAmount === amt ? "bg-sky-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        }`}
+                      >
+                        ₹{amt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -1493,6 +1570,9 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                     onChange={(e) => setDmtCustomerFeePct(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white"
                   />
+                  <span className="text-[9px] font-mono font-bold text-sky-700 dark:text-sky-400 mt-0.5 block">
+                    Fee: +{formatPaisa(dmtCustomerFeePaisa)}
+                  </span>
                 </div>
 
                 <div>
@@ -1507,7 +1587,23 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                     onChange={(e) => setDmtPortalSurchargePct(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white"
                   />
+                  <span className="text-[9px] font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5 block">
+                    Cost: -{formatPaisa(dmtPortalSurchargePaisa)}
+                  </span>
                 </div>
+              </div>
+
+              {/* Live DMT margin strip */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-[11px] font-bold">
+                <span className="text-sky-900 dark:text-sky-200">
+                  Customer Fee: <span className="font-mono">+{formatPaisa(dmtCustomerFeePaisa)}</span>
+                </span>
+                <span className="text-rose-700 dark:text-rose-300">
+                  Portal Surcharge: <span className="font-mono">-{formatPaisa(dmtPortalSurchargePaisa)}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 font-mono">
+                  Net Margin: +{formatPaisa(dmtNetProfitPaisa)}
+                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1654,6 +1750,20 @@ export const CspKiosk: React.FC<CspKioskProps> = ({
                     onChange={(e) => setCashoutAmount(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-purple-500"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {["200", "500", "1000", "2000", "5000"].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setCashoutAmount(amt)}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold cursor-pointer ${
+                          cashoutAmount === amt ? "bg-purple-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        }`}
+                      >
+                        ₹{amt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
