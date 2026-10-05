@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { InvoiceRecord, ShopProfile, DEFAULT_SHOP_PROFILE } from "./contracts";
+import { NOTO_SANS_REGULAR_B64, NOTO_SANS_BOLD_B64 } from "./pdf-fonts";
 
 export function formatInvoicePaisa(paisa: bigint, useSymbol = true): string {
   const isNeg = paisa < 0n;
@@ -7,12 +8,24 @@ export function formatInvoicePaisa(paisa: bigint, useSymbol = true): string {
   const rupees = Number(abs / 100n);
   const remainder = Number(abs % 100n);
   const formatted = remainder > 0 ? `${rupees}.${remainder.toString().padStart(2, "0")}` : `${rupees}`;
-  const prefix = useSymbol ? "₹" : "Rs. ";
+  const prefix = useSymbol ? "₹" : "";
   return `${isNeg ? "-" : ""}${prefix}${formatted}`;
 }
 
 export function formatPdfCurrency(paisa: bigint): string {
-  return formatInvoicePaisa(paisa, false); // "Rs. XX.XX" for standard PDF Helvetica
+  return formatInvoicePaisa(paisa, true); // Always "₹ XX.XX"
+}
+
+export function registerPdfFonts(doc: jsPDF): void {
+  try {
+    doc.addFileToVFS("NotoSans-Regular.ttf", NOTO_SANS_REGULAR_B64);
+    doc.addFileToVFS("NotoSans-Bold.ttf", NOTO_SANS_BOLD_B64);
+    doc.addFont("NotoSans-Regular.ttf", "NotoSans", "normal");
+    doc.addFont("NotoSans-Bold.ttf", "NotoSans", "bold");
+    doc.setFont("NotoSans", "normal");
+  } catch (e) {
+    // Fallback gracefully if already added
+  }
 }
 
 /**
@@ -40,6 +53,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     unit: "mm",
     format: "a4", // 210mm x 297mm
   });
+  registerPdfFonts(doc);
 
   const pageWidth = 210;
   const margin = 14;
@@ -52,35 +66,35 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   // --- SHOP HEADER & LOGO ---
   let y = 16;
   doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(18);
   doc.text(profile.shopName || "SARKAR COMMUNICATION", margin, y);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(14);
   doc.setTextColor(16, 185, 129); // emerald-600
   doc.text("TAX INVOICE", pageWidth - margin, y, { align: "right" });
 
   y += 5.5;
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(9);
   doc.setTextColor(71, 85, 105); // slate-600
   doc.text(profile.tagline || "Digital Seva Kendra & Banking CSP Hub", margin, y);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
   doc.text(`INVOICE NO: ${inv.invoiceNumber}`, pageWidth - margin, y, { align: "right" });
 
   y += 4.5;
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(8);
   doc.text(profile.address || "Main Market, Station Road, West Bengal, India", margin, y);
   doc.text(`DATE: ${inv.date}  |  TIME: ${inv.time}`, pageWidth - margin, y, { align: "right" });
 
   y += 4.5;
   doc.text(`Phone: ${profile.phone || "+91 98765 43210"}  •  Email: ${profile.email || "support@sarkarcomm.in"}`, margin, y);
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setTextColor(30, 41, 59);
   doc.text(`GSTIN: ${profile.gstin || "19AAAAA0000A1Z5"}`, pageWidth - margin, y, { align: "right" });
 
@@ -97,7 +111,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(margin, y, contentWidth, 22, 2, 2, "S");
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
   doc.text("BILLED TO / CUSTOMER DETAILS", margin + 4, y + 5);
@@ -107,7 +121,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.setTextColor(15, 23, 42);
   doc.text(inv.customerName || "Walk-in Customer", margin + 4, y + 10.5);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
   doc.text(`Contact: ${inv.customerPhone || "Not specified"}`, margin + 4, y + 15);
@@ -115,11 +129,11 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     doc.text(`Customer GSTIN: ${inv.customerGstin}`, margin + 4, y + 19);
   }
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
   doc.text(`Payment Mode: ${inv.paymentMethod}`, margin + 105, y + 10.5);
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
   doc.text(`Invoice Status: ${inv.status || "PAID"}`, margin + 105, y + 15);
@@ -131,7 +145,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.rect(margin, y, contentWidth, 7, "F");
 
   doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(7.5);
   doc.text("#", margin + 3, y + 4.8);
   doc.text("ITEM DESCRIPTION", margin + 12, y + 4.8);
@@ -143,7 +157,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
 
   // --- TABLE ROWS ---
   y += 7;
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(8);
 
   inv.items.forEach((item, idx) => {
@@ -155,11 +169,11 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     doc.text(`${idx + 1}`, margin + 3, y + 4.5);
 
     doc.setTextColor(15, 23, 42);
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSans", "bold");
     const name = item.name.length > 36 ? item.name.substring(0, 34) + "..." : item.name;
     doc.text(name, margin + 12, y + 4.5);
 
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     doc.setTextColor(100, 116, 139);
     doc.text(item.hsnCode || "998311", margin + 82, y + 4.5);
 
@@ -170,7 +184,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
     const gstLabel = item.gstRatePercent ? `${item.gstRatePercent}%` : "0%";
     doc.text(gstLabel, margin + 152, y + 4.5, { align: "right" });
 
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSans", "bold");
     doc.text(formatPdfCurrency(item.totalPaisa), margin + contentWidth - 3, y + 4.5, { align: "right" });
 
     y += 6.5;
@@ -186,12 +200,12 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   const summaryBlockWidth = contentWidth - 95;
 
   // Left Note block
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
   doc.text("TERMS & CONDITIONS", margin, y + 3);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
   doc.text("• Computer generated tax invoice. Goods/services once provided cannot be exchanged.", margin, y + 7.5);
@@ -199,11 +213,11 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.text("• Customer support: " + (profile.phone || "+91 98765 43210"), margin, y + 15.5);
 
   if (inv.paymentMethod === "SPLIT" && inv.allocations && inv.allocations.length > 0) {
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSans", "bold");
     doc.setFontSize(7.5);
     doc.setTextColor(15, 23, 42);
     doc.text("SPLIT TENDER ALLOCATION:", margin, y + 21);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     doc.setFontSize(7);
     inv.allocations.forEach((al, aIdx) => {
       const modeLabel = al.method === "CASH" ? "Cash Received" : al.method === "UPI" ? "UPI QR Paid" : "Khata Due";
@@ -218,26 +232,26 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.roundedRect(summaryBlockX, y, summaryBlockWidth, 42, 2, 2, "S");
 
   let sy = y + 5.5;
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
   doc.text("Subtotal (Gross):", summaryBlockX + 4, sy);
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setTextColor(15, 23, 42);
   doc.text(formatPdfCurrency(inv.subtotalPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
 
   if (inv.discountPaisa > 0n) {
     sy += 4.5;
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     doc.setTextColor(225, 29, 72); // rose-600
     doc.text("Discount Applied:", summaryBlockX + 4, sy);
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSans", "bold");
     doc.text(`-${formatPdfCurrency(inv.discountPaisa)}`, summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
   }
 
   if (inv.totalTaxablePaisa) {
     sy += 4.5;
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     doc.setTextColor(71, 85, 105);
     doc.text("Taxable Value:", summaryBlockX + 4, sy);
     doc.text(formatPdfCurrency(inv.totalTaxablePaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
@@ -245,7 +259,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
 
   if (inv.totalCgstPaisa) {
     sy += 4.5;
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     doc.setTextColor(71, 85, 105);
     doc.text("CGST (Central Tax):", summaryBlockX + 4, sy);
     doc.text(formatPdfCurrency(inv.totalCgstPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
@@ -253,7 +267,7 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
 
   if (inv.totalSgstPaisa) {
     sy += 4.5;
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     doc.setTextColor(71, 85, 105);
     doc.text("SGST (State Tax):", summaryBlockX + 4, sy);
     doc.text(formatPdfCurrency(inv.totalSgstPaisa), summaryBlockX + summaryBlockWidth - 4, sy, { align: "right" });
@@ -264,14 +278,14 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.setFillColor(15, 23, 42);
   doc.rect(summaryBlockX, sy, summaryBlockWidth, 8, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(9);
   doc.text("GRAND TOTAL:", summaryBlockX + 4, sy + 5.5);
   doc.text(formatPdfCurrency(inv.totalPaisa), summaryBlockX + summaryBlockWidth - 4, sy + 5.5, { align: "right" });
 
   // --- SIGNATORY & FOOTER BLOCK ---
   y += 56;
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
   doc.text(`For ${profile.shopName || "Sarkar Communication"}`, summaryBlockX + summaryBlockWidth - 4, y, { align: "right" });
@@ -283,19 +297,19 @@ export function generateA4InvoicePdf(inv: InvoiceRecord, customProfile?: ShopPro
   doc.setLineDashPattern([], 0);
 
   y += 4;
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
   doc.text("AUTHORIZED SIGNATORY / COUNTER SEAL", summaryBlockX + summaryBlockWidth - 4, y, { align: "right" });
 
   // Bottom Center Footer Note
   const pageHeight = 297;
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSans", "bold");
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
   doc.text(profile.printFooterNote || "Thank You! Visit Again for Digital Seva & Banking.", pageWidth / 2, pageHeight - 12, { align: "center" });
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSans", "normal");
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
   doc.text("Powered by DigitalCafe ERP • Professional Counter POS System", pageWidth / 2, pageHeight - 8, { align: "center" });

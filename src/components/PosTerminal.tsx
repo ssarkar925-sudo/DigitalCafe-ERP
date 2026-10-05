@@ -12,7 +12,7 @@ import {
 import { createPosSaleJournal, JournalEntry } from "../core/ledger";
 import { syncInvoiceToCloud, syncCatalogItemToCloud } from "../core/supabase";
 import { sendWhatsAppMessage } from "../core/whatsapp";
-import { generateA4InvoicePdf, printA4InvoiceHtml } from "../core/invoice-a4";
+import { generateA4InvoicePdf, printA4InvoiceHtml, registerPdfFonts } from "../core/invoice-a4";
 import { jsPDF } from "jspdf";
 import {
   Search,
@@ -270,13 +270,13 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     return `${isNeg ? "-" : ""}₹${rupees.toLocaleString("en-IN")}.${cents}`;
   };
 
-  // Format Paisa for jsPDF standard font (ASCII Rs. instead of Unicode ₹)
+  // Format Paisa for jsPDF (Unicode ₹ rendered via embedded Noto Sans font)
   const formatPdfPaisa = (paisa: bigint) => {
     const isNeg = paisa < 0n;
     const abs = isNeg ? -paisa : paisa;
     const rupees = abs / 100n;
     const cents = (abs % 100n).toString().padStart(2, "0");
-    return `${isNeg ? "-" : ""}Rs. ${rupees.toLocaleString("en-IN")}.${cents}`;
+    return `${isNeg ? "-" : ""}₹${rupees.toLocaleString("en-IN")}.${cents}`;
   };
 
   // Filter Catalog Items
@@ -918,13 +918,14 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       unit: "mm",
       format: [80, 160], // 80mm thermal receipt format
     });
+    registerPdfFonts(doc);
 
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSans", "bold");
     doc.setFontSize(12);
     doc.text("SARKAR COMMUNICATION", 40, 10, { align: "center" });
 
     doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     doc.text("Digital Seva Kendra & Cyber Cafe", 40, 14, { align: "center" });
     doc.text("West Bengal • Mob: +91 98765 43210", 40, 18, { align: "center" });
     doc.text("--------------------------------------------------", 40, 22, { align: "center" });
@@ -940,13 +941,13 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     // Header Table
     let y = 46;
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSans", "bold");
     doc.text("Item", 6, y);
     doc.text("Qty", 48, y);
     doc.text("Amount", 74, y, { align: "right" });
     y += 4;
 
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSans", "normal");
     inv.items.forEach((item) => {
       const name = item.name.length > 22 ? item.name.substring(0, 20) + ".." : item.name;
       doc.text(name, 6, y);
@@ -959,7 +960,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     doc.text("--------------------------------------------------", 40, y, { align: "center" });
     y += 4;
 
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSans", "bold");
     doc.text("Subtotal:", 6, y);
     doc.text(formatPdfPaisa(inv.subtotalPaisa), 74, y, { align: "right" });
     y += 4;
@@ -971,7 +972,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     }
 
     if (inv.totalTaxPaisa && inv.totalTaxPaisa > 0n) {
-      doc.setFont("helvetica", "normal");
+      doc.setFont("NotoSans", "normal");
       doc.setFontSize(7);
       if (inv.totalTaxablePaisa) {
         doc.text("Taxable Value:", 6, y);
@@ -988,7 +989,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         doc.text(formatPdfPaisa(inv.totalSgstPaisa), 74, y, { align: "right" });
         y += 3.5;
       }
-      doc.setFont("helvetica", "bold");
+      doc.setFont("NotoSans", "bold");
     }
 
     doc.setFontSize(9);
@@ -998,10 +999,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     if (inv.paymentMethod === "SPLIT" && inv.allocations && inv.allocations.length > 0) {
       doc.setFontSize(7.5);
-      doc.setFont("helvetica", "bold");
+      doc.setFont("NotoSans", "bold");
       doc.text("Tender Mode: SPLIT BREAKDOWN", 6, y);
       y += 4;
-      doc.setFont("helvetica", "normal");
+      doc.setFont("NotoSans", "normal");
       inv.allocations.forEach((alloc) => {
         const label =
           alloc.method === "CASH"
@@ -1016,7 +1017,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       y += 2;
     } else {
       doc.setFontSize(7.5);
-      doc.setFont("helvetica", "normal");
+      doc.setFont("NotoSans", "normal");
       doc.text(`Tender Mode: ${inv.paymentMethod}`, 6, y);
       y += 6;
     }
