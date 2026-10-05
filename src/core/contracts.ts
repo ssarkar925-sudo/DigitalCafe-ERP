@@ -342,7 +342,7 @@ export const DEFAULT_HARDWARE_CONFIG: HardwareConfig = {
 };
 
 export const DEFAULT_WHATSAPP_CONFIG: WhatsAppConfig = {
-  gatewayUrl: "http://localhost:3001",
+  gatewayUrl: "https://sccomm-whatsapp-gateway.onrender.com",
   gatewayApiKey: "",
   autoSendInvoice: false,
   autoSendKhataReceipt: false,

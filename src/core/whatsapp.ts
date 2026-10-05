@@ -15,7 +15,9 @@ export function getSavedWhatsAppConfig(): WhatsAppConfig {
   try {
     const saved = localStorage.getItem("dc_whatsapp_config");
     if (saved) {
-      return { ...DEFAULT_WHATSAPP_CONFIG, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      // If user had previous default of localhost:3001 or empty, prefer Render Cloud
+      return { ...DEFAULT_WHATSAPP_CONFIG, ...parsed };
     }
   } catch (e) {
     // fallback to default
@@ -38,10 +40,10 @@ export function normalizeWhatsAppNumber(rawPhone?: string, defaultPrefix = "91")
 
 /**
  * Dispatches a WhatsApp message in 1 click:
- * 1. Checks if Local Gateway (http://localhost:3001) or Cloud Gateway (Render) is active.
- * 2. Attempts background HTTP POST to `${gatewayUrl}/send-message` with a 4s timeout.
- * 3. If the gateway succeeds, delivers directly to recipient's WhatsApp without opening tabs!
- * 4. If gateway is offline or unreachable, seamlessly falls back to wa.me instant link window.
+ * 1. Checks configured gateway URL (or Render cloud default).
+ * 2. Attempts background HTTP POST to `${gatewayUrl}/send-message` with a 5s timeout.
+ * 3. If configured local gateway fails or is offline, tries Render Cloud gateway directly.
+ * 4. If both are unreachable, seamlessly falls back to wa.me instant link window.
  */
 export async function sendWhatsAppMessage(
   phone: string | undefined,
@@ -50,15 +52,17 @@ export async function sendWhatsAppMessage(
 ): Promise<SendWhatsAppResult> {
   const config = getSavedWhatsAppConfig();
   const cleanPhone = normalizeWhatsAppNumber(phone, config.defaultCountryCode);
-  const gatewayUrl = (config.gatewayUrl || "http://localhost:3001").replace(/\/+$/, "");
+  const primaryUrl = (config.gatewayUrl || "https://sccomm-whatsapp-gateway.onrender.com").replace(/\/+$/, "");
+  const fallbackCloudUrl = "https://sccomm-whatsapp-gateway.onrender.com";
 
   // If phone is provided, attempt 1-click Gateway background dispatch
   if (cleanPhone) {
-    try {
+    // Helper to send to a specific gateway URL
+    const tryGatewaySend = async (targetUrl: string, timeoutMs = 6000): Promise<any> => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const res = await fetch(`${gatewayUrl}/send-message`, {
+      const res = await fetch(`${targetUrl}/send-message`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -73,17 +77,37 @@ export async function sendWhatsAppMessage(
       clearTimeout(timeoutId);
 
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (data.success) {
+        return await res.json().catch(() => ({}));
+      }
+      return null;
+    };
+
+    // Attempt 1: Configured Primary Gateway
+    try {
+      const data = await tryGatewaySend(primaryUrl, 5000);
+      if (data && data.success) {
+        if (onNotify) {
+          onNotify(`✓ WhatsApp delivered in 1-click via Gateway to +${cleanPhone}!`);
+        }
+        return { success: true, mode: "GATEWAY", messageId: data.messageId };
+      }
+    } catch (err: any) {
+      console.warn(`[WhatsApp Dispatch] Primary gateway (${primaryUrl}) unavailable:`, err?.message);
+    }
+
+    // Attempt 2: Auto-try Render Cloud Gateway if primary was localhost or different
+    if (primaryUrl !== fallbackCloudUrl) {
+      try {
+        const data = await tryGatewaySend(fallbackCloudUrl, 8000);
+        if (data && data.success) {
           if (onNotify) {
-            onNotify(`✓ WhatsApp delivered in 1-click via Gateway to +${cleanPhone}!`);
+            onNotify(`✓ WhatsApp delivered in 1-click via Render Cloud to +${cleanPhone}!`);
           }
           return { success: true, mode: "GATEWAY", messageId: data.messageId };
         }
+      } catch (err: any) {
+        console.warn(`[WhatsApp Dispatch] Fallback cloud gateway unavailable:`, err?.message);
       }
-    } catch (err: any) {
-      // Gateway unreachable or timed out -> seamless fallback to wa.me
-      console.warn("[WhatsApp Dispatch] Gateway unavailable, falling back to wa.me:", err?.message);
     }
   }
 
