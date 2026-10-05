@@ -8,7 +8,7 @@ import {
   NoteDenominations,
   DayCloseAudit,
 } from "../core/contracts";
-import { sendWhatsAppMessage, getSavedWhatsAppConfig } from "../core/whatsapp";
+import { sendWhatsAppMessage, getSavedWhatsAppConfig, buildDayCloseZReportWhatsAppText } from "../core/whatsapp";
 import {
   Wallet,
   ArrowDownLeft,
@@ -248,6 +248,12 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
     } catch (e) {}
 
     showToast(`✓ Day-Close Audit for ${selectedDate} saved! Variance: ${formatPaisa(cashVariancePaisa)}`);
+
+    // Auto-send WhatsApp Z-report to owner if configured
+    const waConfig = getSavedWhatsAppConfig();
+    if (waConfig.autoSendDayEndSummary && waConfig.ownerMobile) {
+      handleShareDayCloseWhatsApp();
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -336,23 +342,40 @@ export const CashBookAccountsHub: React.FC<CashBookAccountsHubProps> = ({
 
   // Quick 1-Click WhatsApp Day-End Summary
   const handleShareDayCloseWhatsApp = async () => {
-    const text =
-      `*🏛️ SARKAR COMMUNICATION - DAY CLOSE CASH AUDIT*\n` +
-      `📅 *Date:* ${selectedDate} | *Time:* ${timeStr}\n\n` +
-      `💵 *Physical Counted:* ${formatPaisa(physicalCountedPaisa)}\n` +
-      `💻 *ERP Expected Cash:* ${formatPaisa(expectedCashPaisa)}\n` +
-      `⚖️ *Variance:* ${formatPaisa(cashVariancePaisa)} ${cashVariancePaisa === 0n ? "✅ (Exact Balanced)" : "⚠️"}\n\n` +
-      `*Denomination Breakdown:*\n` +
-      `• ₹500 × ${denoms.n500} = ₹${(denoms.n500 * 500).toLocaleString("en-IN")}\n` +
-      `• ₹200 × ${denoms.n200} = ₹${(denoms.n200 * 200).toLocaleString("en-IN")}\n` +
-      `• ₹100 × ${denoms.n100} = ₹${(denoms.n100 * 100).toLocaleString("en-IN")}\n` +
-      `• ₹50  × ${denoms.n50}  = ₹${(denoms.n50 * 50).toLocaleString("en-IN")}\n` +
-      `• ₹20  × ${denoms.n20}  = ₹${(denoms.n20 * 20).toLocaleString("en-IN")}\n` +
-      `• ₹10  × ${denoms.n10}  = ₹${(denoms.n10 * 10).toLocaleString("en-IN")}\n` +
-      `• Coins = ${formatPaisa(denoms.coinsPaisa)}\n\n` +
-      `📊 *Today Inflow:* +${formatPaisa(todayCashIn)}\n` +
-      `📉 *Today Outflow:* -${formatPaisa(todayCashOut)}\n` +
-      `✨ *Verified & Generated via DigitalCafe ERP*`;
+    // 1. Gather invoices for selected date
+    const dayInvoices = invoices.filter((i) => i.date === selectedDate && i.status !== "VOID");
+    const todaySalesRevenuePaisa = dayInvoices.reduce((sum, i) => sum + i.totalPaisa, 0n);
+
+    // 2. Gather CSP transactions for selected date
+    const dayDigital = digitalTransactions.filter((d) => d.date === selectedDate && d.status !== "VOID");
+    const cspCommissionPaisa = dayDigital.reduce((sum, d) => sum + d.customerFeePaisa + d.portalCommissionPaisa, 0n);
+
+    // 3. Get Shop Profile
+    let shopName = "Sarkar Communication";
+    try {
+      const savedProfile = localStorage.getItem("dc_shop_profile");
+      if (savedProfile) {
+        const p = JSON.parse(savedProfile);
+        if (p.shopName) shopName = p.shopName;
+      }
+    } catch (e) {}
+
+    const text = buildDayCloseZReportWhatsAppText({
+      shopName,
+      date: selectedDate,
+      time: timeStr,
+      physicalCountedPaisa,
+      expectedCashPaisa,
+      variancePaisa: cashVariancePaisa,
+      todayCashInPaisa: todayCashIn,
+      todayCashOutPaisa: todayCashOut,
+      denominations: { ...denoms },
+      todaySalesCount: dayInvoices.length,
+      todaySalesRevenuePaisa,
+      cspCommissionPaisa,
+      totalLiquidPoolsPaisa: totalNetLiquidPaisa,
+      totalKhataDuePaisa,
+    });
 
     const config = getSavedWhatsAppConfig();
     const ownerPhone = config.ownerMobile || "";
