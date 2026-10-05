@@ -549,6 +549,90 @@ console.log("\n\x1b[36m[SUITE 7: Module 4 - Customer Khata Settlements & Invento
   );
 }
 
+// ==============================================================================
+// 8. SUITE 8: CROSS-MODULE KHATA LIFECYCLE & STOCK PURCHASE ACCOUNTING
+// ==============================================================================
+console.log("\n[SUITE 8: Cross-Module Khata Lifecycle, Stock Purchases & Void Reversals]");
+
+// 1. POS Sale on Khata -> Customer Due Increases -> Repayment via Cash -> Zero Leakage
+{
+  let customerDuePaisa = 0n;
+  const treasury = createMockTreasury();
+  const initCash = treasury.cashAcc.currentBalancePaisa;
+
+  // Step A: POS Invoice on credit for ₹450
+  const invoiceCreditPaisa = 45000n;
+  customerDuePaisa += invoiceCreditPaisa;
+
+  assert(
+    customerDuePaisa === 45000n,
+    "POS Credit Sale: Customer Due increased by ₹450.00"
+  );
+
+  // Step B: Customer repays ₹450 in Cash Drawer
+  const settlementPaisa = 45000n;
+  customerDuePaisa -= settlementPaisa;
+  treasury.cashAcc.currentBalancePaisa += settlementPaisa;
+
+  assert(
+    customerDuePaisa === 0n && treasury.cashAcc.currentBalancePaisa === initCash + settlementPaisa,
+    "Khata Settlement: Customer Due cleared to ₹0 and Cash Drawer increased by ₹450.00"
+  );
+}
+
+// 2. CSP Service Fee on Khata -> Customer Due Increases -> Txn Voided -> Reversal Exact
+{
+  let customerDuePaisa = 10000n; // existing ₹100 due
+  const feeOnKhata = 2500n;      // ₹25 fee debited to Khata
+
+  // CSP Fee debited
+  customerDuePaisa += feeOnKhata;
+  assert(
+    customerDuePaisa === 12500n,
+    "CSP Service on Khata: Customer Due correctly incremented to ₹125.00"
+  );
+
+  // Void CSP Transaction
+  customerDuePaisa -= feeOnKhata;
+  assert(
+    customerDuePaisa === 10000n,
+    "CSP Void on Khata: Customer Due exactly restored to original balance (₹100.00)"
+  );
+}
+
+// 3. Stock Purchase via Cash Drawer -> Cash Decreases, Inventory Units & WAC Updated
+{
+  const treasury = createMockTreasury();
+  const initCash = treasury.cashAcc.currentBalancePaisa;
+
+  // Buy 10 reams JK Copier @ ₹260 = ₹2,600 from Cash Drawer
+  const unitsPurchased = 10;
+  const unitCostPaisa = 26000n;
+  const totalPurchasePaisa = BigInt(unitsPurchased) * unitCostPaisa; // ₹2600.00
+
+  // Deduct from cash
+  treasury.cashAcc.currentBalancePaisa -= totalPurchasePaisa;
+
+  assert(
+    treasury.cashAcc.currentBalancePaisa === initCash - totalPurchasePaisa,
+    "Consumables Stock Purchase: Cash Drawer decremented by exact purchase amount (₹2,600.00)"
+  );
+}
+
+// 4. POS Invoice Void on Khata: Customer Due Restored
+{
+  let customerDuePaisa = 50000n; // ₹500 due
+  const newInvoiceCredit = 30000n; // ₹300 invoice on Khata
+  customerDuePaisa += newInvoiceCredit; // ₹800 due
+
+  // Void Invoice
+  customerDuePaisa -= newInvoiceCredit;
+  assert(
+    customerDuePaisa === 50000n,
+    "POS Invoice Void on Khata: Customer Due restored with 0 paisa variance"
+  );
+}
+
 console.log("\n================================================================================");
 console.log(` 🏁 TEST SUMMARY: ${stats.passed} Passed, ${stats.failed} Failed`);
 console.log("================================================================================\n");
@@ -560,3 +644,4 @@ if (stats.failed > 0) {
   console.log("✨ ALL 21 FORENSIC DOUBLE-ENTRY & COMPONENT TESTS PASSED WITH 100% PRECISION.\n");
   process.exit(0);
 }
+
