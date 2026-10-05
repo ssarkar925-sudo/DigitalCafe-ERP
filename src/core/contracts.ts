@@ -100,6 +100,39 @@ export interface InvoiceRecord {
   status: "PAID" | "REFUNDED" | "VOID";
 }
 
+export type StockMovementType = "PURCHASE_IN" | "SALE_OUT" | "INTERNAL_USE" | "SCRAP_ADJUSTMENT";
+
+export interface StockMovement {
+  id: string;
+  itemId: string;
+  itemName: string;
+  date: string;
+  time: string;
+  type: StockMovementType;
+  quantityChange: number;
+  unitCostPaisa: bigint;
+  totalCostPaisa: bigint;
+  fundingAccountId?: string;
+  supplierName?: string;
+  notes?: string;
+}
+
+export interface KhataSettlement {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  date: string;
+  time: string;
+  amountPaisa: bigint;
+  previousDuePaisa: bigint;
+  remainingDuePaisa: bigint;
+  paymentMethod: "CASH" | "UPI";
+  receivingAccountId: string;
+  receivingAccountName: string;
+  notes?: string;
+}
+
 export type DigitalServiceType =
   | "AEPS"
   | "DMT"

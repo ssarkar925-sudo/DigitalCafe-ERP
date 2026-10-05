@@ -24,6 +24,8 @@ import { PosTerminal } from "./components/PosTerminal";
 import { AccountManagerModal } from "./components/AccountManagerModal";
 import { CspKiosk } from "./components/CspKiosk";
 import { BbpsRechargeHub } from "./components/BbpsRechargeHub";
+import { KhataStockHub } from "./components/KhataStockHub";
+import { StockMovement, KhataSettlement } from "./core/contracts";
 import { ArrowLeftRight, Landmark } from "lucide-react";
 
 export type NavTab = "dashboard" | "pos" | "csp" | "bbps" | "khata_stock" | "accounts" | "settings";
@@ -972,6 +974,137 @@ export function App() {
     showToast(`✓ Catalog cleared (0 items)`);
   };
 
+  // Customer & Khata Handlers
+  const handleAddCustomer = (c: Customer) => {
+    setCustomers((prev) => [c, ...prev]);
+    showToast(`✓ Added customer "${c.name}"`);
+  };
+
+  const handleUpdateCustomer = (updated: Customer) => {
+    setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    showToast(`✓ Updated customer "${updated.name}"`);
+  };
+
+  const handleDeleteCustomer = (id: string) => {
+    setCustomers((prev) => prev.filter((c) => c.id !== id));
+    showToast(`✓ Customer removed`);
+  };
+
+  const handleRecordKhataSettlement = ({
+    settlement,
+    journal,
+    cashDeltaPaisa,
+    qrDeltaPaisa,
+  }: {
+    settlement: KhataSettlement;
+    journal: JournalEntry;
+    cashDeltaPaisa: bigint;
+    qrDeltaPaisa: bigint;
+  }) => {
+    // 1. Update Customer Due Balance
+    setCustomers((prev) =>
+      prev.map((c) =>
+        c.id === settlement.customerId
+          ? {
+              ...c,
+              currentDuePaisa:
+                c.currentDuePaisa >= settlement.amountPaisa
+                  ? c.currentDuePaisa - settlement.amountPaisa
+                  : 0n,
+            }
+          : c
+      )
+    );
+
+    // 2. Update Inward Treasury Account
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === cashAccount.id && cashDeltaPaisa > 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + cashDeltaPaisa };
+        }
+        if (acc.type === "UPI_HOLDING" && qrDeltaPaisa > 0n) {
+          return { ...acc, currentBalancePaisa: acc.currentBalancePaisa + qrDeltaPaisa };
+        }
+        return acc;
+      })
+    );
+
+    // 3. Write to Cash Book if cash collected
+    if (cashDeltaPaisa > 0n) {
+      setCashBookEntries((prev) => [
+        {
+          id: `cb-${Date.now()}`,
+          date: settlement.date,
+          time: settlement.time,
+          description: `Khata Due Cleared by ${settlement.customerName} (${settlement.paymentMethod})`,
+          type: "IN",
+          amountPaisa: settlement.amountPaisa,
+          runningBalancePaisa: cashAccount.currentBalancePaisa + cashDeltaPaisa,
+          category: "KHATA_PAYMENT",
+          referenceId: settlement.id,
+        },
+        ...prev,
+      ]);
+    }
+
+    showToast(`✓ Received payment of ${formatPaisa(settlement.amountPaisa)} from ${settlement.customerName}`);
+  };
+
+  const handleRecordStockMovement = ({
+    movement,
+    updatedItem,
+    expenseJournal,
+    treasuryDeltaPaisa,
+    fundingAccountId,
+  }: {
+    movement: StockMovement;
+    updatedItem: CatalogItem;
+    expenseJournal?: JournalEntry;
+    treasuryDeltaPaisa?: bigint;
+    fundingAccountId?: string;
+  }) => {
+    // 1. Update Catalog Item (WAC and Stock)
+    handleEditCatalogItem(updatedItem);
+
+    // 2. Deduct from treasury if paid
+    if (fundingAccountId && treasuryDeltaPaisa && treasuryDeltaPaisa < 0n) {
+      const absPaisa = -treasuryDeltaPaisa;
+      setAccounts((prev) =>
+        prev.map((acc) =>
+          acc.id === fundingAccountId
+            ? {
+                ...acc,
+                currentBalancePaisa:
+                  acc.currentBalancePaisa >= absPaisa
+                    ? acc.currentBalancePaisa - absPaisa
+                    : 0n,
+              }
+            : acc
+        )
+      );
+
+      if (fundingAccountId === cashAccount.id) {
+        setCashBookEntries((prev) => [
+          {
+            id: `cb-${Date.now()}`,
+            date: movement.date,
+            time: movement.time,
+            description: `Consumable Stock Purchase: ${movement.itemName} (${movement.quantityChange} units)`,
+            type: "OUT",
+            amountPaisa: absPaisa,
+            runningBalancePaisa:
+              cashAccount.currentBalancePaisa >= absPaisa
+                ? cashAccount.currentBalancePaisa - absPaisa
+                : 0n,
+            category: "EXPENSE",
+            referenceId: movement.id,
+          },
+          ...prev,
+        ]);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100/70 dark:bg-slate-900 text-slate-900 dark:text-slate-100 flex font-sans transition-colors duration-200">
       {/* 1. SIDEBAR */}
@@ -1063,13 +1196,23 @@ export function App() {
 
         {/* WORKSPACE VIEW: MODULE 4 KHATA & STOCK */}
         {activeTab === "khata_stock" && (
-          <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-8 text-center shadow-xs">
-            <span className="text-4xl block mb-2">👥</span>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">Module 4: Customer Khata & Consumables Stock</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-              Customer udhaar credit ledger + wholesale consumables purchase & stock tracking.
-            </p>
-          </div>
+          <KhataStockHub
+            customers={customers}
+            catalogItems={catalogItems}
+            accounts={accounts}
+            invoices={invoices}
+            digitalTransactions={digitalTransactions}
+            timeStr={timeStr}
+            onAddCustomer={handleAddCustomer}
+            onUpdateCustomer={handleUpdateCustomer}
+            onDeleteCustomer={handleDeleteCustomer}
+            onRecordKhataSettlement={handleRecordKhataSettlement}
+            onAddCatalogItem={handleAddCatalogItem}
+            onEditCatalogItem={handleEditCatalogItem}
+            onDeleteCatalogItem={handleDeleteCatalogItem}
+            onRecordStockMovement={handleRecordStockMovement}
+            showToast={showToast}
+          />
         )}
 
         {/* WORKSPACE VIEW: MODULE 5 ACCOUNTS & CASHBOOK */}

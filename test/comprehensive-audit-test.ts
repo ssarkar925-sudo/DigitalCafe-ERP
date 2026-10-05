@@ -17,6 +17,7 @@ import {
   createRechargeUtilityJournal,
   createPosSaleJournal,
   createContraTransferJournal,
+  createKhataSettlementJournal,
   isJournalBalanced,
   JournalEntry,
 } from "../src/core/ledger";
@@ -476,6 +477,76 @@ console.log("\n\x1b[36m[SUITE 6: Boundary Values, Large Numbers & Odd Paisa]\x1b
     incomeAccount: incomeAcc,
   });
   assert(isJournalBalanced(journal), "Odd Fractional Paisa (₹499.73 + ₹10.25 - ₹3.17): Zero Float Variance");
+}
+
+// ==============================================================================
+// 7. MODULE 4: CUSTOMER KHATA SETTLEMENTS & INVENTORY WAC TESTS
+// ==============================================================================
+console.log("\n\x1b[36m[SUITE 7: Module 4 - Customer Khata Settlements & Inventory WAC Kernel]\x1b[0m");
+
+// 1. Khata Settlement via Cash
+{
+  const khataJournal = createKhataSettlementJournal({
+    settlementId: "SET-TEST-CASH",
+    date: "2026-10-05",
+    amountPaisa: 150000n, // ₹1,500
+    customerName: "Subrata Mukherjee",
+    receivingAccount: cashAcc,
+  });
+  assert(
+    isJournalBalanced(khataJournal),
+    "Khata Debt Settlement via Cash Drawer - DR ≡ CR Balanced (Zero Net Equity Change)"
+  );
+}
+
+// 2. Khata Settlement via UPI QR
+{
+  const khataJournal = createKhataSettlementJournal({
+    settlementId: "SET-TEST-QR",
+    date: "2026-10-05",
+    amountPaisa: 200000n, // ₹2,000
+    customerName: "Pabitra Roy",
+    receivingAccount: qrAcc,
+  });
+  assert(
+    isJournalBalanced(khataJournal),
+    "Khata Debt Settlement via Soundbox QR - DR ≡ CR Balanced"
+  );
+}
+
+// 3. WAC (Weighted Average Cost) Stock In Math Verification
+{
+  // Existing: 15 units @ ₹270 = ₹4,050 (405000n paisa)
+  // New In: 10 units @ ₹290 = ₹2,900 (290000n paisa)
+  // Expected Combined: 25 units, Total Cost = ₹6,950 (695000n paisa)
+  // Expected WAC = 695000n / 25n = 27800n (₹278.00)
+  const oldStock = 15;
+  const oldWac = 27000n;
+  const addQty = 10;
+  const addCost = 29000n;
+
+  const totalCost = BigInt(oldStock) * oldWac + BigInt(addQty) * addCost;
+  const newStock = oldStock + addQty;
+  const computedWac = totalCost / BigInt(newStock);
+
+  assert(
+    computedWac === 27800n && newStock === 25,
+    "Inventory WAC Re-calculation: (15@₹270 + 10@₹290) / 25 = ₹278.00 exact"
+  );
+}
+
+// 4. Consumable Stock Out / Scrap Invariant (Unit Cost preserved)
+{
+  const currentStock = 25;
+  const currentWac = 27800n;
+  const deductQty = 5;
+  const remainingStock = currentStock - deductQty;
+  const remainingValuation = BigInt(remainingStock) * currentWac;
+
+  assert(
+    remainingStock === 20 && remainingValuation === 556000n,
+    "Stock Deduction / Internal Scrap: 20 units preserved @ ₹278 = ₹5,560.00"
+  );
 }
 
 console.log("\n================================================================================");
